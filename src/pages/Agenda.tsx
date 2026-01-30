@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { format, addDays, subDays, isToday, parseISO } from 'date-fns';
+import React, { useState, useMemo } from 'react';
+import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Clock, User, MoreVertical, Play, FileText } from 'lucide-react';
+import { Plus, Clock, User, MoreVertical, Play, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +21,7 @@ import { cn } from '@/lib/utils';
 export function AgendaPage() {
   const navigate = useNavigate();
   const { appointments, patients, getAppointmentsByDate, canAddAppointmentOnDate, updateAppointment, deleteAppointment } = useData();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | undefined>();
 
@@ -28,9 +29,16 @@ export function AgendaPage() {
   const dayAppointments = getAppointmentsByDate(dateString);
   const canAddMore = canAddAppointmentOnDate(dateString);
 
-  const goToPreviousDay = () => setSelectedDate(prev => subDays(prev, 1));
-  const goToNextDay = () => setSelectedDate(prev => addDays(prev, 1));
-  const goToToday = () => setSelectedDate(new Date());
+  // Get all dates that have appointments for the calendar indicators
+  const datesWithAppointments = useMemo(() => {
+    const dates = new Set<string>();
+    appointments.forEach(apt => {
+      if (apt.status !== 'cancelled') {
+        dates.add(apt.date);
+      }
+    });
+    return dates;
+  }, [appointments]);
 
   const handleOpenDialog = (appointment?: Appointment) => {
     setEditingAppointment(appointment);
@@ -75,43 +83,79 @@ export function AgendaPage() {
         </Button>
       </div>
 
-      {/* Date navigation */}
+      {/* Calendar with month navigation */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" size="icon" onClick={goToPreviousDay}>
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
-            
-            <div className="flex flex-col items-center gap-1">
-              <button
-                onClick={goToToday}
-                className={cn(
-                  "text-lg font-semibold capitalize transition-colors",
-                  isToday(selectedDate) ? "text-primary" : "text-foreground hover:text-primary"
-                )}
-              >
-                {format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}
-              </button>
-              {isToday(selectedDate) && (
-                <Badge variant="secondary" className="text-xs">Hoy</Badge>
-              )}
-            </div>
-            
-            <Button variant="ghost" size="icon" onClick={goToNextDay}>
-              <ChevronRight className="w-5 h-5" />
-            </Button>
-          </div>
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(date) => date && setSelectedDate(date)}
+            locale={es}
+            className="w-full pointer-events-auto"
+            classNames={{
+              months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0 w-full",
+              month: "space-y-4 w-full",
+              caption: "flex justify-center pt-1 relative items-center",
+              caption_label: "text-sm font-medium",
+              nav: "space-x-1 flex items-center",
+              nav_button: cn(
+                "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input hover:bg-accent hover:text-accent-foreground"
+              ),
+              nav_button_previous: "absolute left-1",
+              nav_button_next: "absolute right-1",
+              table: "w-full border-collapse",
+              head_row: "flex w-full",
+              head_cell: "text-muted-foreground rounded-md flex-1 font-normal text-[0.8rem] text-center",
+              row: "flex w-full mt-2",
+              cell: "flex-1 h-10 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
+              day: cn(
+                "h-10 w-full p-0 font-normal aria-selected:opacity-100 hover:bg-accent hover:text-accent-foreground rounded-md inline-flex items-center justify-center"
+              ),
+              day_range_end: "day-range-end",
+              day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+              day_today: "bg-accent text-accent-foreground",
+              day_outside: "day-outside text-muted-foreground opacity-50",
+              day_disabled: "text-muted-foreground opacity-50",
+              day_hidden: "invisible",
+            }}
+            components={{
+              DayContent: ({ date }) => {
+                const dateStr = format(date, 'yyyy-MM-dd');
+                const hasAppointments = datesWithAppointments.has(dateStr);
+                return (
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <span>{date.getDate()}</span>
+                    {hasAppointments && (
+                      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-destructive rounded-full" />
+                    )}
+                  </div>
+                );
+              },
+            }}
+          />
         </CardContent>
       </Card>
 
-      {/* Appointments limit indicator */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Clock className="w-4 h-4" />
-        <span>{dayAppointments.length} / 4 citas programadas</span>
-        {!canAddMore && (
-          <Badge variant="destructive" className="text-xs">Límite alcanzado</Badge>
-        )}
+      {/* Selected date header */}
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col">
+          <h2 className={cn(
+            "text-lg font-semibold capitalize",
+            isToday(selectedDate) ? "text-primary" : "text-foreground"
+          )}>
+            {format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}
+          </h2>
+          {isToday(selectedDate) && (
+            <Badge variant="secondary" className="text-xs w-fit mt-1">Hoy</Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Clock className="w-4 h-4" />
+          <span>{dayAppointments.length} / 4</span>
+          {!canAddMore && (
+            <Badge variant="destructive" className="text-xs">Límite</Badge>
+          )}
+        </div>
       </div>
 
       {/* Appointments list */}
