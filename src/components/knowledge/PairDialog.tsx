@@ -26,7 +26,6 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
   const isEditing = !!pair;
 
   const [formData, setFormData] = useState({
-    pairCode: '',
     point1: '',
     point2: '',
     pathogen: '',
@@ -36,10 +35,23 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
     notes: '',
   });
 
+  // Generate the next available pair code
+  const generateNextPairCode = (): string => {
+    const existingCodes = biomagneticPairs
+      .map(p => p.pairCode)
+      .filter(code => /^PAR-\d+$/.test(code))
+      .map(code => parseInt(code.replace('PAR-', ''), 10));
+    
+    const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : 0;
+    const nextNumber = maxCode + 1;
+    return `PAR-${nextNumber.toString().padStart(3, '0')}`;
+  };
+
+  const nextPairCode = !isEditing ? generateNextPairCode() : pair?.pairCode || '';
+
   useEffect(() => {
     if (pair) {
       setFormData({
-        pairCode: pair.pairCode,
         point1: pair.point1,
         point2: pair.point2,
         pathogen: pair.pathogen || '',
@@ -50,7 +62,6 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
       });
     } else {
       setFormData({
-        pairCode: '',
         point1: '',
         point2: '',
         pathogen: '',
@@ -65,22 +76,13 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.pairCode.trim() || !formData.point1.trim() || !formData.point2.trim()) {
-      toast.error('Código, Punto 1 y Punto 2 son obligatorios');
-      return;
-    }
-
-    // Check for unique pair code
-    const existingPair = biomagneticPairs.find(
-      p => p.pairCode.toLowerCase() === formData.pairCode.trim().toLowerCase()
-    );
-    if (existingPair && existingPair.id !== pair?.id) {
-      toast.error('Ya existe un par con este código');
+    if (!formData.point1.trim() || !formData.point2.trim()) {
+      toast.error('Punto 1 y Punto 2 son obligatorios');
       return;
     }
 
     const pairData = {
-      pairCode: formData.pairCode.trim(),
+      pairCode: isEditing ? pair.pairCode : nextPairCode,
       point1: formData.point1.trim(),
       point2: formData.point2.trim(),
       pathogen: formData.pathogen.trim() || undefined,
@@ -117,13 +119,12 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="form-field">
-              <Label htmlFor="pairCode">Código *</Label>
+              <Label htmlFor="pairCode">Código</Label>
               <Input
                 id="pairCode"
-                placeholder="PAR-001"
-                value={formData.pairCode}
-                onChange={(e) => setFormData(prev => ({ ...prev, pairCode: e.target.value }))}
-                required
+                value={nextPairCode}
+                disabled
+                className="bg-muted font-mono"
               />
             </div>
             <div className="form-field">
