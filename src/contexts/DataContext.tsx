@@ -30,6 +30,7 @@ interface DataContextType {
   addBiomagneticPair: (pair: Omit<BiomagneticPair, 'id'>) => BiomagneticPair;
   updateBiomagneticPair: (id: string, data: Partial<BiomagneticPair>) => void;
   deleteBiomagneticPair: (id: string) => void;
+  deleteAllBiomagneticPairs: () => void;
   getPairsByPoint1: (point1: string) => BiomagneticPair[];
   getUniquePoint1Values: () => string[];
 }
@@ -192,7 +193,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setBiomagneticPairs(prev => prev.filter(p => p.id !== id));
   };
 
-  const getPairsByPoint1 = (point1: string) => 
+  const deleteAllBiomagneticPairs = () => {
+    setBiomagneticPairs([]);
+  };
+
+  const getPairsByPoint1 = (point1: string) =>
     biomagneticPairs.filter(p => p.point1.toLowerCase() === point1.toLowerCase());
 
   const getUniquePoint1Values = () => 
@@ -220,6 +225,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addBiomagneticPair,
       updateBiomagneticPair,
       deleteBiomagneticPair,
+      deleteAllBiomagneticPairs,
       getPairsByPoint1,
       getUniquePoint1Values,
     }}>

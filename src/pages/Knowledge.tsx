@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Edit, Trash2, BookOpen, Upload } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, BookOpen, Upload, AlertTriangle } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,13 +20,24 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { PairDialog } from '@/components/knowledge/PairDialog';
 import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
 import { BiomagneticPair } from '@/types';
 import { toast } from 'sonner';
 
 export function KnowledgePage() {
-  const { biomagneticPairs, deleteBiomagneticPair } = useData();
+  const { biomagneticPairs, deleteBiomagneticPair, deleteAllBiomagneticPairs } = useData();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterGroup, setFilterGroup] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -80,6 +91,38 @@ export function KnowledgePage() {
           <p className="text-muted-foreground">{biomagneticPairs.length} pares biomagnéticos</p>
         </div>
         <div className="flex gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:text-destructive" disabled={biomagneticPairs.length === 0}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Borrar
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-destructive" />
+                  ¿Eliminar toda la base de datos?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción eliminará permanentemente los {biomagneticPairs.length} pares biomagnéticos. 
+                  Esta acción no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    deleteAllBiomagneticPairs();
+                    toast.success('Base de datos eliminada');
+                  }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Eliminar todo
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Importar
