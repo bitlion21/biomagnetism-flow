@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, Search, Edit, Trash2, BookOpen, Filter } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, BookOpen, Upload } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { PairDialog } from '@/components/knowledge/PairDialog';
+import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
 import { BiomagneticPair } from '@/types';
 import { toast } from 'sonner';
 
@@ -30,6 +31,7 @@ export function KnowledgePage() {
   const [filterGroup, setFilterGroup] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingPair, setEditingPair] = useState<BiomagneticPair | undefined>();
 
   // Get unique groups and types for filters
@@ -77,10 +79,16 @@ export function KnowledgePage() {
           <h1 className="text-2xl font-bold text-foreground">Base de Conocimiento</h1>
           <p className="text-muted-foreground">{biomagneticPairs.length} pares biomagnéticos</p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nuevo Par
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Importar
+          </Button>
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nuevo Par
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -215,6 +223,12 @@ export function KnowledgePage() {
         open={dialogOpen}
         onClose={handleCloseDialog}
         pair={editingPair}
+      />
+
+      {/* Import Dialog */}
+      <ImportPairsDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
       />
     </div>
   );
