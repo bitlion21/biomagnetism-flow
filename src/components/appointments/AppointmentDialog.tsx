@@ -135,7 +135,7 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
               </SelectTrigger>
               <SelectContent>
                 {patients.length === 0 ? (
-                  <SelectItem value="" disabled>No hay pacientes registrados</SelectItem>
+                  <div className="py-2 px-3 text-sm text-muted-foreground">No hay pacientes registrados</div>
                 ) : (
                   patients.map((patient) => (
                     <SelectItem key={patient.id} value={patient.id}>
