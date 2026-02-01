@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Search, Edit, Trash2, BookOpen, Upload, AlertTriangle, Stethoscope, Lightbulb } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, BookOpen, Upload, Download, AlertTriangle, Stethoscope, Lightbulb } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,6 +102,32 @@ export function KnowledgePage() {
     setInfoDialogOpen(true);
   };
 
+  const handleExport = () => {
+    if (biomagneticPairs.length === 0) {
+      toast.error('No hay pares para exportar');
+      return;
+    }
+
+    const exportData = biomagneticPairs.map(pair => ({
+      CODIGO: pair.pairCode,
+      'PUNTO 1': pair.point1,
+      'PUNTO 2': pair.point2,
+      NOMBRE: pair.name || '',
+      RELACION: pair.relation || '',
+      PATOGENO: pair.pathogen || '',
+      TIPO: pair.type || '',
+      SINTOMATOLOGIA: pair.symptoms || '',
+      RECOMENDACIONES: pair.recommendations || '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pares Biomagnéticos');
+    
+    XLSX.writeFile(workbook, 'pares_biomagneticos.xlsx');
+    toast.success(`${biomagneticPairs.length} pares exportados`);
+  };
+
   return (
     <TooltipProvider>
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
@@ -143,6 +170,10 @@ export function KnowledgePage() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <Button variant="outline" onClick={handleExport} disabled={biomagneticPairs.length === 0}>
+              <Download className="w-4 h-4 mr-2" />
+              Exportar
+            </Button>
             <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
               <Upload className="w-4 h-4 mr-2" />
               Importar
