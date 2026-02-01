@@ -28,11 +28,12 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
   const [formData, setFormData] = useState({
     point1: '',
     point2: '',
+    name: '',
+    relation: '',
     pathogen: '',
     type: '',
     symptoms: '',
-    group: '',
-    notes: '',
+    recommendations: '',
   });
 
   // Generate the next available pair code
@@ -54,21 +55,23 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
       setFormData({
         point1: pair.point1,
         point2: pair.point2,
+        name: pair.name || '',
+        relation: pair.relation || '',
         pathogen: pair.pathogen || '',
         type: pair.type || '',
         symptoms: pair.symptoms || '',
-        group: pair.group || '',
-        notes: pair.notes || '',
+        recommendations: pair.recommendations || '',
       });
     } else {
       setFormData({
         point1: '',
         point2: '',
+        name: '',
+        relation: '',
         pathogen: '',
         type: '',
         symptoms: '',
-        group: '',
-        notes: '',
+        recommendations: '',
       });
     }
   }, [pair, open]);
@@ -85,11 +88,12 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
       pairCode: isEditing ? pair.pairCode : nextPairCode,
       point1: formData.point1.trim(),
       point2: formData.point2.trim(),
+      name: formData.name.trim() || undefined,
+      relation: formData.relation.trim() || undefined,
       pathogen: formData.pathogen.trim() || undefined,
       type: formData.type.trim() || undefined,
       symptoms: formData.symptoms.trim() || undefined,
-      group: formData.group.trim() || undefined,
-      notes: formData.notes.trim() || undefined,
+      recommendations: formData.recommendations.trim() || undefined,
     };
 
     if (isEditing) {
@@ -105,7 +109,7 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Par' : 'Nuevo Par Biomagnético'}</DialogTitle>
           <DialogDescription>
@@ -128,12 +132,12 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
               />
             </div>
             <div className="form-field">
-              <Label htmlFor="group">Grupo</Label>
+              <Label htmlFor="name">Nombre</Label>
               <Input
-                id="group"
-                placeholder="Cabeza, Tronco, etc."
-                value={formData.group}
-                onChange={(e) => setFormData(prev => ({ ...prev, group: e.target.value }))}
+                id="name"
+                placeholder="Nombre del par"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               />
             </div>
           </div>
@@ -161,6 +165,16 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
             </div>
           </div>
 
+          <div className="form-field">
+            <Label htmlFor="relation">Relación</Label>
+            <Input
+              id="relation"
+              placeholder="Relación entre los puntos"
+              value={formData.relation}
+              onChange={(e) => setFormData(prev => ({ ...prev, relation: e.target.value }))}
+            />
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="form-field">
               <Label htmlFor="pathogen">Patógeno</Label>
@@ -183,7 +197,7 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
           </div>
 
           <div className="form-field">
-            <Label htmlFor="symptoms">Síntomas</Label>
+            <Label htmlFor="symptoms">Sintomatología</Label>
             <Textarea
               id="symptoms"
               placeholder="Síntomas asociados a este par..."
@@ -193,12 +207,12 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
           </div>
 
           <div className="form-field">
-            <Label htmlFor="notes">Notas</Label>
+            <Label htmlFor="recommendations">Recomendaciones</Label>
             <Textarea
-              id="notes"
-              placeholder="Notas adicionales sobre el par..."
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              id="recommendations"
+              placeholder="Recomendaciones para este par..."
+              value={formData.recommendations}
+              onChange={(e) => setFormData(prev => ({ ...prev, recommendations: e.target.value }))}
             />
           </div>
 

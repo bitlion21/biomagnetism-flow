@@ -25,11 +25,12 @@ interface ParsedPair {
   pairCode: string;
   point1: string;
   point2: string;
+  name?: string;
+  relation?: string;
   pathogen?: string;
   type?: string;
   symptoms?: string;
-  group?: string;
-  notes?: string;
+  recommendations?: string;
 }
 
 interface ImportResult {
@@ -40,35 +41,48 @@ interface ImportResult {
 
 // Column name mappings (Spanish to English)
 const COLUMN_MAPPINGS: Record<string, keyof ParsedPair> = {
-  // English
-  'paircode': 'pairCode',
-  'pair_code': 'pairCode',
-  'code': 'pairCode',
-  'point1': 'point1',
-  'point_1': 'point1',
-  'point2': 'point2',
-  'point_2': 'point2',
-  'pathogen': 'pathogen',
-  'type': 'type',
-  'symptoms': 'symptoms',
-  'group': 'group',
-  'notes': 'notes',
-  // Spanish
+  // CODIGO
   'codigo': 'pairCode',
   'código': 'pairCode',
-  'codigo_par': 'pairCode',
-  'código_par': 'pairCode',
+  'code': 'pairCode',
+  'paircode': 'pairCode',
+  // PUNTO 1
+  'punto 1': 'point1',
   'punto1': 'point1',
   'punto_1': 'point1',
+  'point1': 'point1',
+  'point 1': 'point1',
+  // PUNTO 2
+  'punto 2': 'point2',
   'punto2': 'point2',
   'punto_2': 'point2',
+  'point2': 'point2',
+  'point 2': 'point2',
+  // NOMBRE
+  'nombre': 'name',
+  'name': 'name',
+  // RELACION
+  'relacion': 'relation',
+  'relación': 'relation',
+  'relation': 'relation',
+  // PATOGENO
   'patogeno': 'pathogen',
   'patógeno': 'pathogen',
+  'pathogen': 'pathogen',
+  // TIPO
   'tipo': 'type',
+  'type': 'type',
+  // SINTOMATOLOGIA
+  'sintomatologia': 'symptoms',
+  'sintomatología': 'symptoms',
+  'symptoms': 'symptoms',
   'sintomas': 'symptoms',
   'síntomas': 'symptoms',
-  'grupo': 'group',
-  'notas': 'notes',
+  // RECOMENDACIONES
+  'recomendaciones': 'recommendations',
+  'recommendations': 'recommendations',
+  'recomendacion': 'recommendations',
+  'recomendación': 'recommendations',
 };
 
 export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
@@ -141,11 +155,12 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
                 pairCode: pair.pairCode || `IMP-${String(i).padStart(3, '0')}`,
                 point1: pair.point1,
                 point2: pair.point2,
+                name: pair.name,
+                relation: pair.relation,
                 pathogen: pair.pathogen,
                 type: pair.type,
                 symptoms: pair.symptoms,
-                group: pair.group,
-                notes: pair.notes,
+                recommendations: pair.recommendations,
               });
             }
           }
@@ -200,11 +215,12 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
                 pairCode: pair.pairCode || `IMP-${String(index + 1).padStart(3, '0')}`,
                 point1: pair.point1,
                 point2: pair.point2,
+                name: pair.name,
+                relation: pair.relation,
                 pathogen: pair.pathogen,
                 type: pair.type,
                 symptoms: pair.symptoms,
-                group: pair.group,
-                notes: pair.notes,
+                recommendations: pair.recommendations,
               });
             }
           });
