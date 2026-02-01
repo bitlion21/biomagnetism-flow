@@ -62,14 +62,15 @@ export interface ClinicalChecklistItem {
 
 export interface BiomagneticPair {
   id: string;
-  pairCode: string; // Unique code
-  point1: string;
-  point2: string;
-  pathogen?: string;
-  type?: string;
-  symptoms?: string;
-  group?: string;
-  notes?: string;
+  pairCode: string; // Unique code (CODIGO)
+  point1: string; // PUNTO 1
+  point2: string; // PUNTO 2
+  name?: string; // NOMBRE
+  relation?: string; // RELACION
+  pathogen?: string; // PATOGENO
+  type?: string; // TIPO
+  symptoms?: string; // SINTOMATOLOGIA
+  recommendations?: string; // RECOMENDACIONES
 }
 
 // User type for simple auth

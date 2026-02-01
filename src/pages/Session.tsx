@@ -314,10 +314,10 @@ export function SessionPage() {
                       <p>{currentPairResult.symptoms}</p>
                     </div>
                   )}
-                  {currentPairResult.notes && (
+                  {currentPairResult.recommendations && (
                     <div>
-                      <p className="text-xs text-muted-foreground">Notas</p>
-                      <p className="text-muted-foreground">{currentPairResult.notes}</p>
+                      <p className="text-xs text-muted-foreground">Recomendaciones</p>
+                      <p className="text-muted-foreground">{currentPairResult.recommendations}</p>
                     </div>
                   )}
                 </div>
