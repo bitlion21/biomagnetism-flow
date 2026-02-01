@@ -47,20 +47,20 @@ export function SessionPage() {
   const navigate = useNavigate();
   const { 
     getPatientById, 
-    getUniquePoint1Values, 
-    getPairsByPoint1, 
+    getUniquePointValues, 
+    getPairsByPoint, 
     biomagneticPairs,
     addSession, 
     updateAppointment 
   } = useData();
 
   const patient = getPatientById(patientId || '');
-  const uniquePoints = getUniquePoint1Values();
+  const uniquePoints = getUniquePointValues();
 
   // Session state
-  const [selectedPoint1, setSelectedPoint1] = useState<string>('');
-  const [point1Open, setPoint1Open] = useState(false);
-  const [availablePairs, setAvailablePairs] = useState<BiomagneticPair[]>([]);
+  const [selectedPoint, setSelectedPoint] = useState<string>('');
+  const [pointOpen, setPointOpen] = useState(false);
+  const [availablePairs, setAvailablePairs] = useState<{ pair: BiomagneticPair; isPoint1: boolean }[]>([]);
   const [selectedPairs, setSelectedPairs] = useState<SelectedPair[]>([]);
   const [checklist, setChecklist] = useState<ClinicalChecklistItem[]>(
     defaultClinicalChecklist.map(item => ({ ...item }))
@@ -69,12 +69,16 @@ export function SessionPage() {
   const [summary, setSummary] = useState('');
   const [currentPairResult, setCurrentPairResult] = useState<BiomagneticPair | null>(null);
 
-  // When point1 is selected, show available pairs
-  const handlePoint1Select = (point: string) => {
-    setSelectedPoint1(point);
-    setPoint1Open(false);
-    const pairs = getPairsByPoint1(point);
-    setAvailablePairs(pairs);
+  // When point is selected, show available pairs (both from point1 and point2)
+  const handlePointSelect = (point: string) => {
+    setSelectedPoint(point);
+    setPointOpen(false);
+    const pairs = getPairsByPoint(point);
+    const pairsWithInfo = pairs.map(pair => ({
+      pair,
+      isPoint1: pair.point1.toLowerCase() === point.toLowerCase()
+    }));
+    setAvailablePairs(pairsWithInfo);
     setCurrentPairResult(null);
   };
 
@@ -196,20 +200,20 @@ export function SessionPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left column - Pair selection */}
         <div className="space-y-4">
-          {/* Point 1 selection */}
+          {/* Point selection */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">1. Seleccionar Primer Punto</CardTitle>
+              <CardTitle className="text-base">1. Seleccionar Punto</CardTitle>
             </CardHeader>
             <CardContent>
-              <Popover open={point1Open} onOpenChange={setPoint1Open}>
+              <Popover open={pointOpen} onOpenChange={setPointOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
                     className="w-full justify-between"
                   >
-                    {selectedPoint1 || "Buscar punto..."}
+                    {selectedPoint || "Buscar punto..."}
                     <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
@@ -223,7 +227,7 @@ export function SessionPage() {
                           <CommandItem
                             key={point}
                             value={point}
-                            onSelect={() => handlePoint1Select(point)}
+                            onSelect={() => handlePointSelect(point)}
                           >
                             {point}
                           </CommandItem>
@@ -236,8 +240,8 @@ export function SessionPage() {
             </CardContent>
           </Card>
 
-          {/* Point 2 / Pair selection */}
-          {selectedPoint1 && (
+          {/* Pair selection */}
+          {selectedPoint && (
             <Card className="animate-fade-up">
               <CardHeader>
                 <CardTitle className="text-base">2. Seleccionar Par</CardTitle>
@@ -249,12 +253,12 @@ export function SessionPage() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {availablePairs.map((pair) => (
+                    {availablePairs.map(({ pair, isPoint1 }) => (
                       <button
                         key={pair.id}
                         onClick={() => handlePairSelect(pair)}
                         className={cn(
-                          "w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors",
+                          "w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors relative",
                           currentPairResult?.id === pair.id 
                             ? "border-primary bg-primary/5" 
                             : "border-border hover:border-primary/50 hover:bg-muted/50"
@@ -263,11 +267,20 @@ export function SessionPage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <Badge variant="secondary" className="text-xs">{pair.pairCode}</Badge>
-                            <span className="font-medium text-sm">{pair.point2}</span>
+                            <span className="font-medium text-sm">
+                              {isPoint1 ? pair.point2 : pair.point1}
+                            </span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">{pair.pathogen}</p>
                         </div>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        <div className="flex items-center gap-2">
+                          {isPoint1 && (
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-destructive text-destructive text-xs font-bold">
+                              −
+                            </span>
+                          )}
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        </div>
                       </button>
                     ))}
                   </div>

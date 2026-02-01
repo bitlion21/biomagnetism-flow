@@ -32,7 +32,9 @@ interface DataContextType {
   deleteBiomagneticPair: (id: string) => void;
   deleteAllBiomagneticPairs: () => void;
   getPairsByPoint1: (point1: string) => BiomagneticPair[];
+  getPairsByPoint: (point: string) => BiomagneticPair[];
   getUniquePoint1Values: () => string[];
+  getUniquePointValues: () => string[];
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -200,8 +202,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getPairsByPoint1 = (point1: string) =>
     biomagneticPairs.filter(p => p.point1.toLowerCase() === point1.toLowerCase());
 
+  const getPairsByPoint = (point: string) =>
+    biomagneticPairs.filter(p => 
+      p.point1.toLowerCase() === point.toLowerCase() || 
+      p.point2.toLowerCase() === point.toLowerCase()
+    );
+
   const getUniquePoint1Values = () => 
     [...new Set(biomagneticPairs.map(p => p.point1))].sort();
+
+  const getUniquePointValues = () => 
+    [...new Set([...biomagneticPairs.map(p => p.point1), ...biomagneticPairs.map(p => p.point2)])].sort();
 
   return (
     <DataContext.Provider value={{
@@ -227,7 +238,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       deleteBiomagneticPair,
       deleteAllBiomagneticPairs,
       getPairsByPoint1,
+      getPairsByPoint,
       getUniquePoint1Values,
+      getUniquePointValues,
     }}>
       {children}
     </DataContext.Provider>
