@@ -276,7 +276,7 @@ export function SessionPage() {
                         <div className="flex items-center gap-2">
                           {isPoint1 && (
                             <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-destructive text-destructive text-xs font-bold">
-                              −
+                              +
                             </span>
                           )}
                           <ChevronRight className="w-4 h-4 text-muted-foreground" />
