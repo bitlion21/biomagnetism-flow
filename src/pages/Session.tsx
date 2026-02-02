@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
   ArrowLeft, Save, CheckCircle2, Circle, Plus, Trash2, 
-  Search, ChevronRight, AlertTriangle, User, Check, Pencil 
+  Search, ChevronRight, AlertTriangle, User, Check, Pencil, X 
 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { defaultClinicalChecklist } from '@/data/clinicalChecklist';
@@ -221,6 +221,19 @@ export function SessionPage() {
       delete intervalRefs.current[pairCode];
     }
     setSelectedPairs(prev => prev.filter(p => p.pairCode !== pairCode));
+  };
+
+  // Cancel timer and reset to zero
+  const cancelTimer = (pairCode: string) => {
+    if (intervalRefs.current[pairCode]) {
+      clearInterval(intervalRefs.current[pairCode]);
+      delete intervalRefs.current[pairCode];
+    }
+    setSelectedPairs(prev => prev.map(p => 
+      p.pairCode === pairCode 
+        ? { ...p, timerSeconds: 0, isRunning: false, editingTimer: false }
+        : p
+    ));
   };
 
   // Toggle checklist item
@@ -524,8 +537,17 @@ export function SessionPage() {
                             size="icon"
                             className="h-6 w-6 text-muted-foreground hover:text-foreground"
                             onClick={() => toggleTimerEdit(pair.pairCode)}
+                            disabled={pair.isRunning}
                           >
                             <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            onClick={() => cancelTimer(pair.pairCode)}
+                          >
+                            <X className="w-4 h-4" />
                           </Button>
                         </div>
                         <Button 
