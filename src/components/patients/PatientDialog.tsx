@@ -39,7 +39,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
     name: '',
     lastName: '',
     email: '',
-    age: '',
+    birthDate: '',
     sex: '' as 'male' | 'female' | 'other' | '',
     symptomsPathologies: '',
     surgicalInterventions: '',
@@ -60,7 +60,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
         name: patient.name || '',
         lastName: patient.lastName || '',
         email: patient.email || '',
-        age: patient.age?.toString() || '',
+        birthDate: patient.birthDate || '',
         sex: patient.sex || '',
         symptomsPathologies: patient.symptomsPathologies || '',
         surgicalInterventions: patient.surgicalInterventions || '',
@@ -80,7 +80,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
         name: '',
         lastName: '',
         email: '',
-        age: '',
+        birthDate: '',
         sex: '',
         symptomsPathologies: '',
         surgicalInterventions: '',
@@ -95,6 +95,19 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
       });
     }
   }, [patient, open]);
+
+  const getAgeFromBirthDate = (birthDate?: string) => {
+    if (!birthDate) return undefined;
+    const date = new Date(birthDate);
+    if (Number.isNaN(date.getTime())) return undefined;
+    const now = new Date();
+    let age = now.getFullYear() - date.getFullYear();
+    const hasHadBirthdayThisYear =
+      now.getMonth() > date.getMonth() ||
+      (now.getMonth() === date.getMonth() && now.getDate() >= date.getDate());
+    if (!hasHadBirthdayThisYear) age -= 1;
+    return age >= 0 ? age : undefined;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +130,8 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
       name: formData.name.trim() || undefined,
       lastName: formData.lastName.trim() || undefined,
       email: formData.email.trim() || undefined,
-      age: formData.age ? parseInt(formData.age) : undefined,
+      birthDate: formData.birthDate || undefined,
+      age: getAgeFromBirthDate(formData.birthDate),
       sex: formData.sex || undefined,
       symptomsPathologies: formData.symptomsPathologies.trim() || undefined,
       surgicalInterventions: formData.surgicalInterventions.trim() || undefined,
@@ -211,15 +225,22 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
                   />
                 </div>
                 <div className="form-field">
+                  <Label htmlFor="birthDate">Fecha de nacimiento</Label>
+                  <Input
+                    id="birthDate"
+                    type="date"
+                    value={formData.birthDate}
+                    onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
+                  />
+                </div>
+                <div className="form-field">
                   <Label htmlFor="age">Edad</Label>
                   <Input
                     id="age"
                     type="number"
-                    placeholder="30"
-                    min="0"
-                    max="120"
-                    value={formData.age}
-                    onChange={(e) => setFormData(prev => ({ ...prev, age: e.target.value }))}
+                    placeholder="-"
+                    value={getAgeFromBirthDate(formData.birthDate) ?? ''}
+                    disabled
                   />
                 </div>
                 <div className="form-field">

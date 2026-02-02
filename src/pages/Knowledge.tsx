@@ -47,7 +47,7 @@ import { toast } from 'sonner';
 export function KnowledgePage() {
   const { biomagneticPairs, deleteBiomagneticPair, deleteAllBiomagneticPairs } = useData();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRelation, setFilterRelation] = useState<string>('all');
+  const [filterPathogen, setFilterPathogen] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -58,9 +58,16 @@ export function KnowledgePage() {
   const [infoDialogType, setInfoDialogType] = useState<'symptoms' | 'recommendations'>('symptoms');
   const [infoDialogPair, setInfoDialogPair] = useState<BiomagneticPair | null>(null);
 
-  // Get unique relations and types for filters
-  const uniqueRelations = [...new Set(biomagneticPairs.map(p => p.relation).filter(Boolean))];
+  // Get unique pathogens and types for filters
+  const uniquePathogens = [...new Set(biomagneticPairs.map(p => p.pathogen).filter(Boolean))];
   const uniqueTypes = [...new Set(biomagneticPairs.map(p => p.type).filter(Boolean))];
+
+  const normalizeText = (value?: string) =>
+    (value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
 
   // Filter pairs
   const filteredPairs = biomagneticPairs.filter(pair => {
@@ -73,10 +80,22 @@ export function KnowledgePage() {
       (pair.pathogen && pair.pathogen.toLowerCase().includes(query)) ||
       (pair.symptoms && pair.symptoms.toLowerCase().includes(query));
     
-    const matchesRelation = filterRelation === 'all' || pair.relation === filterRelation;
+    const typeNormalized = normalizeText(pair.type);
+    const pathogenNormalized = normalizeText(pair.pathogen);
+    const isKnownType = ['virus', 'bacteria', 'hongo', 'parasito'].some(typeLabel =>
+      typeNormalized.includes(typeLabel) || pathogenNormalized.includes(typeLabel)
+    );
+
+    let matchesPathogen = true;
+    if (filterPathogen === 'unassigned') {
+      matchesPathogen = !isKnownType;
+    } else if (filterPathogen !== 'all') {
+      matchesPathogen = pathogenNormalized === normalizeText(filterPathogen);
+    }
+
     const matchesType = filterType === 'all' || pair.type === filterType;
 
-    return matchesSearch && matchesRelation && matchesType;
+    return matchesSearch && matchesPathogen && matchesType;
   });
 
   const handleOpenDialog = (pair?: BiomagneticPair) => {
@@ -198,15 +217,16 @@ export function KnowledgePage() {
                   className="pl-10"
                 />
               </div>
-              <Select value={filterRelation} onValueChange={setFilterRelation}>
+              <Select value={filterPathogen} onValueChange={setFilterPathogen}>
                 <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="Relación" />
+                  <SelectValue placeholder="Patógeno" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas las relaciones</SelectItem>
-                  {uniqueRelations.map(relation => (
-                    <SelectItem key={relation} value={relation!}>{relation}</SelectItem>
+                  <SelectItem value="all">Todos los patógenos</SelectItem>
+                  {uniquePathogens.map(pathogen => (
+                    <SelectItem key={pathogen} value={pathogen!}>{pathogen}</SelectItem>
                   ))}
+                  <SelectItem value="unassigned">Sin id</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterType} onValueChange={setFilterType}>
@@ -232,18 +252,18 @@ export function KnowledgePage() {
                 <BookOpen className="w-8 h-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-medium text-foreground mb-1">
-                {searchQuery || filterRelation !== 'all' || filterType !== 'all' 
+                {searchQuery || filterPathogen !== 'all' || filterType !== 'all' 
                   ? 'Sin resultados' 
                   : 'Sin pares registrados'
                 }
               </h3>
               <p className="text-muted-foreground mb-4">
-                {searchQuery || filterRelation !== 'all' || filterType !== 'all'
+                {searchQuery || filterPathogen !== 'all' || filterType !== 'all'
                   ? 'No se encontraron pares con esos filtros'
                   : 'Agrega tu primer par biomagnético'
                 }
               </p>
-              {!searchQuery && filterRelation === 'all' && filterType === 'all' && (
+              {!searchQuery && filterPathogen === 'all' && filterType === 'all' && (
                 <Button onClick={() => handleOpenDialog()}>
                   <Plus className="w-4 h-4 mr-2" />
                   Agregar par

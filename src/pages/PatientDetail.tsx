@@ -43,6 +43,21 @@ export function PatientDetailPage() {
     return patient.phone.slice(-2);
   };
 
+  const getAgeFromBirthDate = (birthDate?: string) => {
+    if (!birthDate) return undefined;
+    const date = new Date(birthDate);
+    if (Number.isNaN(date.getTime())) return undefined;
+    const now = new Date();
+    let age = now.getFullYear() - date.getFullYear();
+    const hasHadBirthdayThisYear =
+      now.getMonth() > date.getMonth() ||
+      (now.getMonth() === date.getMonth() && now.getDate() >= date.getDate());
+    if (!hasHadBirthdayThisYear) age -= 1;
+    return age >= 0 ? age : undefined;
+  };
+
+  const computedAge = getAgeFromBirthDate(patient.birthDate) ?? patient.age;
+
   const InfoItem = ({ label, value, icon: Icon }: { label: string; value?: string | number | boolean; icon?: any }) => {
     if (value === undefined || value === null || value === '') return null;
     
@@ -100,10 +115,10 @@ export function PatientDetailPage() {
                     {patient.email}
                   </span>
                 )}
-                {patient.age && (
+                {computedAge !== undefined && (
                   <span className="flex items-center gap-1">
                     <User className="w-4 h-4" />
-                    {patient.age} años
+                    {computedAge} años
                   </span>
                 )}
               </div>
@@ -143,6 +158,7 @@ export function PatientDetailPage() {
               </CardHeader>
               <CardContent className="pt-0">
                 <InfoItem label="Sexo" value={patient.sex === 'male' ? 'Masculino' : patient.sex === 'female' ? 'Femenino' : patient.sex === 'other' ? 'Otro' : undefined} />
+                <InfoItem label="Fecha de nacimiento" value={patient.birthDate ? format(new Date(patient.birthDate), "d 'de' MMMM, yyyy", { locale: es }) : undefined} />
                 <InfoItem label="Primera cita" value={patient.firstAppointmentDate ? format(new Date(patient.firstAppointmentDate), "d 'de' MMMM, yyyy", { locale: es }) : undefined} />
                 <InfoItem label="Síntomas / Patologías" value={patient.symptomsPathologies} />
                 <InfoItem label="Intervenciones quirúrgicas" value={patient.surgicalInterventions} />

@@ -46,7 +46,6 @@ const STORAGE_KEYS = {
   pairs: 'biomag_pairs',
 };
 
-const MAX_APPOINTMENTS_PER_DAY = 4;
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -127,13 +126,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getAppointmentsByDate = (date: string) => 
     appointments.filter(a => a.date === date && a.status !== 'cancelled');
 
-  const canAddAppointmentOnDate = (date: string) => 
-    getAppointmentsByDate(date).length < MAX_APPOINTMENTS_PER_DAY;
+  const canAddAppointmentOnDate = (date: string) => true;
 
   const addAppointment = (data: Omit<Appointment, 'id' | 'createdAt'>): Appointment | null => {
-    if (!canAddAppointmentOnDate(data.date)) {
-      return null;
-    }
     const newAppointment: Appointment = {
       ...data,
       id: generateId(),

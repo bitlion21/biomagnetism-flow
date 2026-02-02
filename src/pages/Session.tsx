@@ -1,10 +1,20 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  ArrowLeft, Save, CheckCircle2, Circle, Plus, Trash2, 
-  Search, ChevronRight, AlertTriangle, User, Check, Pencil, X 
+import {
+  ArrowLeft,
+  Save,
+  CheckCircle2,
+  Plus,
+  Trash2,
+  Search,
+  ChevronRight,
+  AlertTriangle,
+  User,
+  Check,
+  X,
+  Pencil,
 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { defaultClinicalChecklist } from '@/data/clinicalChecklist';
@@ -15,14 +25,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Command,
   CommandEmpty,
@@ -45,13 +47,12 @@ export function SessionPage() {
   const [searchParams] = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
   const navigate = useNavigate();
-  const { 
-    getPatientById, 
-    getUniquePointValues, 
-    getPairsByPoint, 
-    biomagneticPairs,
-    addSession, 
-    updateAppointment 
+  const {
+    getPatientById,
+    getUniquePointValues,
+    getPairsByPoint,
+    addSession,
+    updateAppointment,
   } = useData();
 
   const patient = getPatientById(patientId || '');
@@ -61,51 +62,41 @@ export function SessionPage() {
   const [selectedPoint, setSelectedPoint] = useState<string>('');
   const [pointOpen, setPointOpen] = useState(false);
   const [availablePairs, setAvailablePairs] = useState<{ pair: BiomagneticPair; isPoint1: boolean }[]>([]);
-  const [selectedPairs, setSelectedPairs] = useState<(SelectedPair & { timerSeconds: number; editingTimer: boolean; isRunning: boolean })[]>([]);
-  const [tempTimerInputs, setTempTimerInputs] = useState<Record<string, string>>({});
+  const [selectedPairs, setSelectedPairs] = useState<SelectedPair[]>([]);
+  const [pairTimers, setPairTimers] = useState<Record<string, { baseSeconds: number; remainingSeconds: number; isRunning: boolean }>>({});
+  const [editingPairTimer, setEditingPairTimer] = useState<string | null>(null);
+  const [editingTimerValue, setEditingTimerValue] = useState<string>('');
   const [checklist, setChecklist] = useState<ClinicalChecklistItem[]>(
     defaultClinicalChecklist.map(item => ({ ...item }))
   );
   const [freeNotes, setFreeNotes] = useState('');
   const [summary, setSummary] = useState('');
   const [currentPairResult, setCurrentPairResult] = useState<BiomagneticPair | null>(null);
-  const intervalRefs = useRef<Record<string, NodeJS.Timeout>>({});
 
-  // Countdown timer effect
+  const DEFAULT_TIMER_SECONDS = 12 * 60;
+
   useEffect(() => {
-    selectedPairs.forEach(pair => {
-      if (pair.isRunning && pair.timerSeconds > 0 && !intervalRefs.current[pair.pairCode]) {
-        intervalRefs.current[pair.pairCode] = setInterval(() => {
-          setSelectedPairs(prev => prev.map(p => {
-            if (p.pairCode === pair.pairCode && p.isRunning && p.timerSeconds > 0) {
-              const newSeconds = p.timerSeconds - 1;
-              if (newSeconds <= 0) {
-                clearInterval(intervalRefs.current[pair.pairCode]);
-                delete intervalRefs.current[pair.pairCode];
-                return { ...p, timerSeconds: 0, isRunning: false };
-              }
-              return { ...p, timerSeconds: newSeconds };
-            }
-            return p;
-          }));
-        }, 1000);
-      } else if (!pair.isRunning && intervalRefs.current[pair.pairCode]) {
-        clearInterval(intervalRefs.current[pair.pairCode]);
-        delete intervalRefs.current[pair.pairCode];
-      }
-    });
-
-    return () => {
-      Object.values(intervalRefs.current).forEach(clearInterval);
-    };
-  }, [selectedPairs.map(p => `${p.pairCode}-${p.isRunning}`).join(',')]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(intervalRefs.current).forEach(clearInterval);
-      intervalRefs.current = {};
-    };
+    const intervalId = setInterval(() => {
+      setPairTimers(prev => {
+        let updated = false;
+        const next: typeof prev = {};
+        for (const [pairCode, timer] of Object.entries(prev)) {
+          if (!timer.isRunning) {
+            next[pairCode] = timer;
+            continue;
+          }
+          const remaining = Math.max(0, timer.remainingSeconds - 1);
+          next[pairCode] = {
+            ...timer,
+            remainingSeconds: remaining,
+            isRunning: remaining > 0 ? timer.isRunning : false,
+          };
+          updated = true;
+        }
+        return updated ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(intervalId);
   }, []);
 
   // When point is selected, show available pairs (both from point1 and point2)
@@ -115,7 +106,7 @@ export function SessionPage() {
     const pairs = getPairsByPoint(point);
     const pairsWithInfo = pairs.map(pair => ({
       pair,
-      isPoint1: pair.point1.toLowerCase() === point.toLowerCase()
+      isPoint1: pair.point1.toLowerCase() === point.toLowerCase(),
     }));
     setAvailablePairs(pairsWithInfo);
     setCurrentPairResult(null);
@@ -136,109 +127,31 @@ export function SessionPage() {
       pairCode: pair.pairCode,
       point1: pair.point1,
       point2: pair.point2,
-      timerSeconds: 12 * 60, // Default 12 minutes
-      editingTimer: false,
-      isRunning: false,
     }]);
-    toast.success(`Par ${pair.pairCode} agregado`);
-  };
-
-  // Format seconds to MM:SS
-  const formatTimer = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Toggle timer editing mode
-  const toggleTimerEdit = (pairCode: string) => {
-    setSelectedPairs(prev => prev.map(p => {
-      if (p.pairCode === pairCode) {
-        if (!p.editingTimer) {
-          // Starting edit - initialize temp input
-          setTempTimerInputs(prev => ({
-            ...prev,
-            [pairCode]: formatTimer(p.timerSeconds)
-          }));
-        }
-        return { ...p, editingTimer: !p.editingTimer };
-      }
-      return p;
+    setPairTimers(prev => ({
+      ...prev,
+      [pair.pairCode]: prev[pair.pairCode] || {
+        baseSeconds: DEFAULT_TIMER_SECONDS,
+        remainingSeconds: DEFAULT_TIMER_SECONDS,
+        isRunning: false,
+      },
     }));
-  };
-
-  // Confirm timer edit and start countdown
-  const confirmTimerEdit = (pairCode: string) => {
-    const pair = selectedPairs.find(p => p.pairCode === pairCode);
-    
-    if (pair?.editingTimer) {
-      // If editing, save the new time and start countdown
-      const input = tempTimerInputs[pairCode] || '12:00';
-      const parts = input.split(':');
-      let totalSeconds = 12 * 60; // Default
-      
-      if (parts.length === 2) {
-        const mins = parseInt(parts[0], 10) || 0;
-        const secs = parseInt(parts[1], 10) || 0;
-        totalSeconds = mins * 60 + secs;
-      }
-      
-      // Clear existing interval if any
-      if (intervalRefs.current[pairCode]) {
-        clearInterval(intervalRefs.current[pairCode]);
-        delete intervalRefs.current[pairCode];
-      }
-      
-      setSelectedPairs(prev => prev.map(p => 
-        p.pairCode === pairCode 
-          ? { ...p, timerSeconds: totalSeconds, editingTimer: false, isRunning: totalSeconds > 0 }
-          : p
-      ));
-    } else {
-      // If not editing and timer is not running, start countdown with current time
-      if (!pair?.isRunning && pair?.timerSeconds && pair.timerSeconds > 0) {
-        setSelectedPairs(prev => prev.map(p => 
-          p.pairCode === pairCode 
-            ? { ...p, isRunning: true }
-            : p
-        ));
-      }
-    }
-  };
-
-  // Handle timer input change
-  const handleTimerInputChange = (pairCode: string, value: string) => {
-    // Allow only digits and colon
-    const cleaned = value.replace(/[^\d:]/g, '');
-    setTempTimerInputs(prev => ({ ...prev, [pairCode]: cleaned }));
+    toast.success(`Par ${pair.pairCode} agregado`);
   };
 
   // Remove pair from session
   const removePair = (pairCode: string) => {
-    // Clear interval if running
-    if (intervalRefs.current[pairCode]) {
-      clearInterval(intervalRefs.current[pairCode]);
-      delete intervalRefs.current[pairCode];
-    }
     setSelectedPairs(prev => prev.filter(p => p.pairCode !== pairCode));
-  };
-
-  // Cancel timer and reset to zero
-  const cancelTimer = (pairCode: string) => {
-    if (intervalRefs.current[pairCode]) {
-      clearInterval(intervalRefs.current[pairCode]);
-      delete intervalRefs.current[pairCode];
-    }
-    setSelectedPairs(prev => prev.map(p => 
-      p.pairCode === pairCode 
-        ? { ...p, timerSeconds: 0, isRunning: false, editingTimer: false }
-        : p
-    ));
+    setPairTimers(prev => {
+      const next = { ...prev };
+      delete next[pairCode];
+      return next;
+    });
   };
 
   // Toggle checklist item
   const toggleChecklistItem = (id: string) => {
-    setChecklist(prev => prev.map(item => 
+    setChecklist(prev => prev.map(item =>
       item.id === id ? { ...item, checked: !item.checked } : item
     ));
   };
@@ -283,6 +196,56 @@ export function SessionPage() {
 
   // Check for warnings
   const hasWarnings = patient.hasPacemaker || patient.isPregnant || patient.chemotherapyOrRadiation;
+
+  const formatTimer = (totalSeconds: number) => {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const parseTimerInput = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized) return null;
+    if (/^\d+$/.test(normalized)) {
+      const minutes = parseInt(normalized, 10);
+      return minutes >= 0 ? minutes * 60 : null;
+    }
+    const match = normalized.match(/^(\d{1,2}):(\d{1,2})$/);
+    if (!match) return null;
+    const minutes = parseInt(match[1], 10);
+    const seconds = parseInt(match[2], 10);
+    if (Number.isNaN(minutes) || Number.isNaN(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {
+      return null;
+    }
+    return minutes * 60 + seconds;
+  };
+
+  const startEditingTimer = (pairCode: string, baseSeconds: number) => {
+    setEditingPairTimer(pairCode);
+    setEditingTimerValue(formatTimer(baseSeconds));
+  };
+
+  const cancelEditingTimer = () => {
+    setEditingPairTimer(null);
+    setEditingTimerValue('');
+  };
+
+  const commitEditingTimer = (pairCode: string, timer: { baseSeconds: number; remainingSeconds: number; isRunning: boolean }) => {
+    const seconds = parseTimerInput(editingTimerValue);
+    if (seconds === null) {
+      toast.error('Formato inválido. Usa mm o mm:ss');
+      return;
+    }
+    setPairTimers(prev => ({
+      ...prev,
+      [pairCode]: {
+        baseSeconds: seconds,
+        remainingSeconds: seconds,
+        isRunning: false,
+      },
+    }));
+    cancelEditingTimer();
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
@@ -389,8 +352,8 @@ export function SessionPage() {
                         onClick={() => handlePairSelect(pair)}
                         className={cn(
                           "w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors relative",
-                          currentPairResult?.id === pair.id 
-                            ? "border-primary bg-primary/5" 
+                          currentPairResult?.id === pair.id
+                            ? "border-primary bg-primary/5"
                             : "border-border hover:border-primary/50 hover:bg-muted/50"
                         )}
                       >
@@ -404,9 +367,13 @@ export function SessionPage() {
                           <p className="text-xs text-muted-foreground mt-1">{pair.pathogen}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {isPoint1 && (
+                          {isPoint1 ? (
                             <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-destructive text-destructive text-xs font-bold">
                               +
+                            </span>
+                          ) : (
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-foreground text-foreground text-xs font-bold">
+                              −
                             </span>
                           )}
                           <ChevronRight className="w-4 h-4 text-muted-foreground" />
@@ -488,79 +455,134 @@ export function SessionPage() {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {selectedPairs.map((pair) => (
-                    <div 
-                      key={pair.pairCode}
-                      className="flex items-center justify-between p-3 bg-success/5 border border-success/20 rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-success" />
-                        <div>
-                          <p className="font-medium text-sm">{pair.pairCode}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {pair.point1} ↔ {pair.point2}
-                          </p>
+                  {selectedPairs.map((pair) => {
+                    const timer = pairTimers[pair.pairCode] || {
+                      baseSeconds: DEFAULT_TIMER_SECONDS,
+                      remainingSeconds: DEFAULT_TIMER_SECONDS,
+                      isRunning: false,
+                    };
+                    return (
+                      <div
+                        key={pair.pairCode}
+                        className={cn(
+                          "flex items-center justify-between p-3 bg-success/5 border border-success/20 rounded-lg",
+                          timer.remainingSeconds === 0 && "border-l-8 border-l-success"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-success" />
+                          <div>
+                            <p className="font-medium text-sm">{pair.pairCode}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {pair.point1} ↔ {pair.point2}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Timer display */}
-                        <div className="flex items-center gap-1 bg-muted/50 rounded-lg px-2 py-1">
-                          {pair.editingTimer ? (
+                        <div className="flex items-center gap-3">
+                          {editingPairTimer === pair.pairCode ? (
                             <Input
-                              value={tempTimerInputs[pair.pairCode] || '12:00'}
-                              onChange={(e) => handleTimerInputChange(pair.pairCode, e.target.value)}
-                              className="w-16 h-7 text-center text-sm font-mono p-1"
-                              placeholder="MM:SS"
-                              onKeyDown={(e) => e.key === 'Enter' && confirmTimerEdit(pair.pairCode)}
+                              value={editingTimerValue}
+                              onChange={(e) => setEditingTimerValue(e.target.value)}
+                              className="h-7 w-[72px] text-right font-mono text-sm"
+                              inputMode="numeric"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  commitEditingTimer(pair.pairCode, timer);
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  cancelEditingTimer();
+                                }
+                              }}
                             />
                           ) : (
-                            <span className="font-mono text-sm min-w-[50px] text-center">
-                              {formatTimer(pair.timerSeconds)}
-                            </span>
+                            <div className="text-right font-mono text-sm text-foreground min-w-[52px]">
+                              {formatTimer(timer.remainingSeconds)}
+                            </div>
                           )}
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-success hover:text-success"
+                              onClick={() => {
+                                if (editingPairTimer === pair.pairCode) {
+                                  const seconds = parseTimerInput(editingTimerValue);
+                                  if (seconds === null) {
+                                    toast.error('Formato inválido. Usa mm o mm:ss');
+                                    return;
+                                  }
+                                  setPairTimers(prev => ({
+                                    ...prev,
+                                    [pair.pairCode]: {
+                                      baseSeconds: seconds,
+                                      remainingSeconds: seconds,
+                                      isRunning: true,
+                                    },
+                                  }));
+                                  cancelEditingTimer();
+                                  return;
+                                }
+                                setPairTimers(prev => ({
+                                  ...prev,
+                                  [pair.pairCode]: {
+                                    ...timer,
+                                    remainingSeconds: timer.remainingSeconds === 0 ? timer.baseSeconds : timer.remainingSeconds,
+                                    isRunning: true,
+                                  },
+                                }));
+                              }}
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setPairTimers(prev => ({
+                                  ...prev,
+                                  [pair.pairCode]: {
+                                    ...timer,
+                                    remainingSeconds: timer.baseSeconds,
+                                    isRunning: false,
+                                  },
+                                }));
+                              }}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "text-muted-foreground hover:text-foreground",
+                                editingPairTimer === pair.pairCode && "bg-muted/80 border border-border shadow-inner"
+                              )}
+                              onClick={() => {
+                                if (editingPairTimer === pair.pairCode) {
+                                  commitEditingTimer(pair.pairCode, timer);
+                                  return;
+                                }
+                                startEditingTimer(pair.pairCode, timer.baseSeconds);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          </div>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className={cn(
-                              "h-6 w-6",
-                              pair.isRunning 
-                                ? "text-muted-foreground cursor-not-allowed" 
-                                : "text-success hover:text-success hover:bg-success/10"
-                            )}
-                            onClick={() => confirmTimerEdit(pair.pairCode)}
-                            disabled={pair.isRunning}
+                            onClick={() => removePair(pair.pairCode)}
+                            className="text-muted-foreground hover:text-destructive"
                           >
-                            <Check className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                            onClick={() => toggleTimerEdit(pair.pairCode)}
-                            disabled={pair.isRunning}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                            onClick={() => cancelTimer(pair.pairCode)}
-                          >
-                            <X className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => removePair(pair.pairCode)}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

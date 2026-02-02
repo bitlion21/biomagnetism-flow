@@ -7,6 +7,7 @@ export interface Patient {
   lastName?: string;
   email?: string;
   photo?: string;
+  birthDate?: string; // YYYY-MM-DD
   firstAppointmentDate?: string;
   age?: number;
   sex?: 'male' | 'female' | 'other';
