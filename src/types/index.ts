@@ -74,6 +74,14 @@ export interface BiomagneticPair {
   recommendations?: string; // RECOMENDACIONES
 }
 
+export interface DiseaseCondition {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  letter?: string;
+}
+
 // User type for simple auth
 export interface User {
   username: string;
@@ -87,4 +95,5 @@ export interface AppState {
   appointments: Appointment[];
   sessions: Session[];
   biomagneticPairs: BiomagneticPair[];
+  diseaseConditions: DiseaseCondition[];
 }

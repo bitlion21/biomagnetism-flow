@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Patient, Appointment, Session, BiomagneticPair } from '@/types';
+import { Patient, Appointment, Session, BiomagneticPair, DiseaseCondition } from '@/types';
 import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
 
 interface DataContextType {
@@ -35,6 +35,10 @@ interface DataContextType {
   getPairsByPoint: (point: string) => BiomagneticPair[];
   getUniquePoint1Values: () => string[];
   getUniquePointValues: () => string[];
+
+  // Disease conditions
+  diseaseConditions: DiseaseCondition[];
+  replaceDiseaseConditions: (items: DiseaseCondition[]) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -44,6 +48,7 @@ const STORAGE_KEYS = {
   appointments: 'biomag_appointments',
   sessions: 'biomag_sessions',
   pairs: 'biomag_pairs',
+  diseaseConditions: 'biomag_disease_conditions',
 };
 
 
@@ -56,6 +61,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [biomagneticPairs, setBiomagneticPairs] = useState<BiomagneticPair[]>([]);
+  const [diseaseConditions, setDiseaseConditions] = useState<DiseaseCondition[]>([]);
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -63,6 +69,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const savedAppointments = localStorage.getItem(STORAGE_KEYS.appointments);
     const savedSessions = localStorage.getItem(STORAGE_KEYS.sessions);
     const savedPairs = localStorage.getItem(STORAGE_KEYS.pairs);
+    const savedDiseaseConditions = localStorage.getItem(STORAGE_KEYS.diseaseConditions);
 
     if (savedPatients) setPatients(JSON.parse(savedPatients));
     if (savedAppointments) setAppointments(JSON.parse(savedAppointments));
@@ -73,6 +80,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Initialize with default pairs if none exist
       setBiomagneticPairs(initialBiomagneticPairs);
       localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(initialBiomagneticPairs));
+    }
+    if (savedDiseaseConditions) {
+      setDiseaseConditions(JSON.parse(savedDiseaseConditions));
     }
   }, []);
 
@@ -92,6 +102,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(biomagneticPairs));
   }, [biomagneticPairs]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.diseaseConditions, JSON.stringify(diseaseConditions));
+  }, [diseaseConditions]);
 
   // Patient functions
   const addPatient = (data: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Patient => {
@@ -209,6 +223,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getUniquePointValues = () => 
     [...new Set([...biomagneticPairs.map(p => p.point1), ...biomagneticPairs.map(p => p.point2)])].sort();
 
+  const replaceDiseaseConditions = (items: DiseaseCondition[]) => {
+    setDiseaseConditions(items);
+  };
+
   return (
     <DataContext.Provider value={{
       patients,
@@ -236,6 +254,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       getPairsByPoint,
       getUniquePoint1Values,
       getUniquePointValues,
+      diseaseConditions,
+      replaceDiseaseConditions,
     }}>
       {children}
     </DataContext.Provider>

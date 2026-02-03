@@ -15,6 +15,7 @@ import {
   Check,
   X,
   Pencil,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { defaultClinicalChecklist } from '@/data/clinicalChecklist';
@@ -38,6 +39,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { SelectedPair, ClinicalChecklistItem, BiomagneticPair } from '@/types';
 import { cn } from '@/lib/utils';
@@ -72,6 +79,8 @@ export function SessionPage() {
   const [freeNotes, setFreeNotes] = useState('');
   const [summary, setSummary] = useState('');
   const [currentPairResult, setCurrentPairResult] = useState<BiomagneticPair | null>(null);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [imageDialogPairCode, setImageDialogPairCode] = useState<string | null>(null);
 
   const DEFAULT_TIMER_SECONDS = 12 * 60;
 
@@ -245,6 +254,12 @@ export function SessionPage() {
       },
     }));
     cancelEditingTimer();
+  };
+
+  const getPairImagePath = (pairCode: string) => {
+    const match = pairCode.match(/\d+/);
+    const number = match ? match[0] : pairCode;
+    return `/pairs/${number}.png`;
   };
 
   return (
@@ -472,7 +487,20 @@ export function SessionPage() {
                         <div className="flex items-center gap-3">
                           <CheckCircle2 className="w-5 h-5 text-success" />
                           <div>
-                            <p className="font-medium text-sm">{pair.pairCode}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-sm">{pair.pairCode}</p>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                onClick={() => {
+                                  setImageDialogPairCode(pair.pairCode);
+                                  setImageDialogOpen(true);
+                                }}
+                              >
+                                <ImageIcon className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
                             <p className="text-xs text-muted-foreground">
                               {pair.point1} ↔ {pair.point2}
                             </p>
@@ -645,6 +673,22 @@ export function SessionPage() {
           </Card>
         </div>
       </div>
+      <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Imagen del par {imageDialogPairCode}</DialogTitle>
+          </DialogHeader>
+          {imageDialogPairCode && (
+            <div className="w-full overflow-hidden rounded-lg border bg-muted/10">
+              <img
+                src={getPairImagePath(imageDialogPairCode)}
+                alt={`Imagen del par ${imageDialogPairCode}`}
+                className="w-full h-auto object-contain"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
