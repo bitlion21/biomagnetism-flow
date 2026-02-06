@@ -80,6 +80,7 @@ export interface DiseaseCondition {
   description?: string;
   category?: string;
   letter?: string;
+  url?: string;
 }
 
 // User type for simple auth

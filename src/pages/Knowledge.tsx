@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Search, Edit, Trash2, BookOpen, Upload, Download, AlertTriangle, Stethoscope, Lightbulb, Image as ImageIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
@@ -39,17 +40,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { PairDialog } from '@/components/knowledge/PairDialog';
+import { PairInfoDialog } from '@/components/knowledge/PairInfoDialog';
+import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
+import { BiomagneticPair, DiseaseCondition } from '@/types';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { PairDialog } from '@/components/knowledge/PairDialog';
-import { PairInfoDialog } from '@/components/knowledge/PairInfoDialog';
-import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
-import { BiomagneticPair, DiseaseCondition } from '@/types';
-import { toast } from 'sonner';
 
 export function KnowledgePage() {
   const { biomagneticPairs, deleteBiomagneticPair, deleteAllBiomagneticPairs, diseaseConditions, replaceDiseaseConditions } = useData();
@@ -92,14 +94,14 @@ export function KnowledgePage() {
 
   // Filter pairs
   const filteredPairs = biomagneticPairs.filter(pair => {
-    const query = searchQuery.toLowerCase();
-    const matchesSearch = 
-      pair.pairCode.toLowerCase().includes(query) ||
-      pair.point1.toLowerCase().includes(query) ||
-      pair.point2.toLowerCase().includes(query) ||
-      (pair.name && pair.name.toLowerCase().includes(query)) ||
-      (pair.pathogen && pair.pathogen.toLowerCase().includes(query)) ||
-      (pair.symptoms && pair.symptoms.toLowerCase().includes(query));
+    const query = normalizeText(searchQuery);
+    const matchesSearch = !query ||
+      normalizeText(pair.pairCode).includes(query) ||
+      normalizeText(pair.point1).includes(query) ||
+      normalizeText(pair.point2).includes(query) ||
+      normalizeText(pair.name).includes(query) ||
+      normalizeText(pair.pathogen).includes(query) ||
+      normalizeText(pair.symptoms).includes(query);
     
     const typeNormalized = normalizeText(pair.type);
     const pathogenNormalized = normalizeText(pair.pathogen);
@@ -145,7 +147,7 @@ export function KnowledgePage() {
   const getPairImagePath = (pair: BiomagneticPair) => {
     const match = pair.pairCode.match(/\d+/);
     const number = match ? match[0] : pair.pairCode;
-    return `/pairs/${number}.png`;
+    return `/images/pares/${number}.png`;
   };
 
   const handleExport = () => {
@@ -182,34 +184,38 @@ export function KnowledgePage() {
   const buildDiseaseItems = (rows: Record<string, any>[]): DiseaseCondition[] => {
     return rows
       .map((row, index) => {
+        const normalizedRow = Object.entries(row).reduce<Record<string, any>>((acc, [key, value]) => {
+          acc[key.toLowerCase().trim()] = value;
+          return acc;
+        }, {});
+
         const name =
-          row.NOMBRE ||
-          row.ENFERMEDAD ||
-          row.AFECCION ||
-          row.NOMBRE_ENFERMEDAD ||
-          row.NAME ||
-          row.DISEASE ||
+          normalizedRow['nombre'] ||
+          normalizedRow['enfermedad'] ||
+          normalizedRow['afeccion'] ||
+          normalizedRow['nombre_enfermedad'] ||
+          normalizedRow['name'] ||
+          normalizedRow['disease'] ||
           getFirstColumnValue(row);
         const description =
-          row.DESCRIPCION ||
-          row.DESCRIPCIÓN ||
-          row.NOTAS ||
-          row.NOTES ||
-          row.DESCRIPTION;
-        const category =
-          row.CATEGORIA ||
-          row.CATEGORÍA ||
-          row.TIPO ||
-          row.CATEGORY;
+          normalizedRow['texto'] ||
+          normalizedRow['descripcion'] ||
+          normalizedRow['descripción'] ||
+          normalizedRow['notas'] ||
+          normalizedRow['notes'] ||
+          normalizedRow['description'];
+        const letter = normalizedRow['letra'];
+        const url =
+          normalizedRow['url'] ||
+          normalizedRow['enlace'];
         const cleanName = typeof name === 'string' ? name.trim() : '';
         if (!cleanName) return null;
-        const letter = cleanName.charAt(0).toUpperCase();
         return {
           id: `${Date.now().toString(36)}-${index}`,
           name: cleanName,
           description: typeof description === 'string' ? description.trim() : undefined,
-          category: typeof category === 'string' ? category.trim() : undefined,
-          letter,
+          letter: typeof letter === 'string' ? letter.trim().toUpperCase() : cleanName.charAt(0).toUpperCase(),
+          url: typeof url === 'string' ? url.trim() : undefined,
         } as DiseaseCondition;
       })
       .filter(Boolean) as DiseaseCondition[];
@@ -222,6 +228,10 @@ export function KnowledgePage() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
       const items = buildDiseaseItems(jsonData as Record<string, any>[]);
+      if (items.length === 0) {
+        toast.error('No se encontraron filas válidas. Revisa los encabezados.');
+        return;
+      }
       replaceDiseaseConditions(items);
       toast.success(`${items.length} enfermedades/afecciones importadas`);
     } catch (error) {
@@ -233,7 +243,7 @@ export function KnowledgePage() {
     const query = normalizeText(diseaseSearchQuery);
     return diseaseConditions.filter(item => {
       const matchesSearch = !query || normalizeText(item.name).includes(query);
-      const matchesLetter = selectedLetter === 'all' || item.name.toUpperCase().startsWith(selectedLetter);
+      const matchesLetter = selectedLetter === 'all' || (item.letter || '').toUpperCase() === selectedLetter;
       return matchesSearch && matchesLetter;
     });
   }, [diseaseConditions, diseaseSearchQuery, normalizeText, selectedLetter]);
@@ -248,6 +258,12 @@ export function KnowledgePage() {
             <p className="text-muted-foreground">{biomagneticPairs.length} pares biomagnéticos</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/knowledge/images">
+                <ImageIcon className="w-4 h-4 mr-2" />
+                Imágenes
+              </Link>
+            </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" className="text-destructive hover:text-destructive" disabled={biomagneticPairs.length === 0}>
@@ -440,14 +456,14 @@ export function KnowledgePage() {
                               </Tooltip>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleShowInfo(pair, 'recommendations')}
-                                    className="text-warning hover:text-warning"
-                                  >
-                                    <Lightbulb className="w-4 h-4" />
-                                  </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleShowInfo(pair, 'recommendations')}
+                                className="text-primary hover:text-primary"
+                              >
+                                <Lightbulb className="w-4 h-4" />
+                              </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Recomendaciones</TooltipContent>
                               </Tooltip>
@@ -567,32 +583,17 @@ export function KnowledgePage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead className="hidden md:table-cell">Categoría</TableHead>
-                        <TableHead className="hidden lg:table-cell">Descripción</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredDiseaseConditions.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.name}</TableCell>
-                          <TableCell className="hidden md:table-cell text-muted-foreground">
-                            {item.category || '-'}
-                          </TableCell>
-                          <TableCell className="hidden lg:table-cell text-muted-foreground">
-                            {item.description || '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Card>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {filteredDiseaseConditions.map((item) => (
+                  <Link
+                    key={item.id}
+                    className="text-left border rounded-lg p-3 hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                    to={`/knowledge/diseases/${item.id}`}
+                  >
+                    <p className="font-semibold text-sm text-foreground">{item.name}</p>
+                  </Link>
+                ))}
+              </div>
             )}
           </TabsContent>
         </Tabs>

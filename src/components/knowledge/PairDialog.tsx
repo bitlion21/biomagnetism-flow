@@ -40,12 +40,12 @@ export function PairDialog({ open, onClose, pair }: PairDialogProps) {
   const generateNextPairCode = (): string => {
     const existingCodes = biomagneticPairs
       .map(p => p.pairCode)
-      .filter(code => /^PAR-\d+$/.test(code))
-      .map(code => parseInt(code.replace('PAR-', ''), 10));
-    
-    const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : 0;
-    const nextNumber = maxCode + 1;
-    return `PAR-${nextNumber.toString().padStart(3, '0')}`;
+      .filter(code => /^N\.\d+$/.test(code))
+      .map(code => parseInt(code.replace('N.', ''), 10));
+
+    const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : 499;
+    const nextNumber = Math.max(500, maxCode + 1);
+    return `N.${nextNumber}`;
   };
 
   const nextPairCode = !isEditing ? generateNextPairCode() : pair?.pairCode || '';

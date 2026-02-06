@@ -22,7 +22,7 @@ interface ImportPairsDialogProps {
 }
 
 interface ParsedPair {
-  pairCode: string;
+  pairCode?: string;
   point1: string;
   point2: string;
   name?: string;
@@ -152,7 +152,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
 
             if (pair.point1 && pair.point2) {
               pairs.push({
-                pairCode: pair.pairCode || `IMP-${String(i).padStart(3, '0')}`,
+                pairCode: pair.pairCode,
                 point1: pair.point1,
                 point2: pair.point2,
                 name: pair.name,
@@ -212,7 +212,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
 
             if (pair.point1 && pair.point2) {
               pairs.push({
-                pairCode: pair.pairCode || `IMP-${String(index + 1).padStart(3, '0')}`,
+                pairCode: pair.pairCode,
                 point1: pair.point1,
                 point2: pair.point2,
                 name: pair.name,
@@ -244,6 +244,14 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
 
     setImporting(true);
     const existingCodes = new Set(biomagneticPairs.map(p => p.pairCode.toLowerCase()));
+    let nextCustomNumber = (() => {
+      const customNumbers = biomagneticPairs
+        .map(p => p.pairCode)
+        .filter(code => /^N\.\d+$/.test(code))
+        .map(code => parseInt(code.replace('N.', ''), 10));
+      const maxCode = customNumbers.length > 0 ? Math.max(...customNumbers) : 499;
+      return Math.max(500, maxCode + 1);
+    })();
     
     let success = 0;
     let duplicates = 0;
@@ -251,13 +259,18 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
 
     for (const pair of parsedPairs) {
       try {
-        if (existingCodes.has(pair.pairCode.toLowerCase())) {
+        let pairCode = pair.pairCode?.trim();
+        if (!pairCode) {
+          pairCode = `N.${nextCustomNumber}`;
+          nextCustomNumber += 1;
+        }
+        if (existingCodes.has(pairCode.toLowerCase())) {
           duplicates++;
           continue;
         }
         
-        addBiomagneticPair(pair);
-        existingCodes.add(pair.pairCode.toLowerCase());
+        addBiomagneticPair({ ...pair, pairCode });
+        existingCodes.add(pairCode.toLowerCase());
         success++;
       } catch {
         errors++;

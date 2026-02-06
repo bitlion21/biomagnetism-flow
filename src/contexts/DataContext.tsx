@@ -51,6 +51,60 @@ const STORAGE_KEYS = {
   diseaseConditions: 'biomag_disease_conditions',
 };
 
+const IDB_CONFIG = {
+  name: 'biomag_app',
+  store: 'kv',
+  key: 'disease_conditions',
+};
+
+const openDiseaseDb = (): Promise<IDBDatabase | null> => {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(IDB_CONFIG.name, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(IDB_CONFIG.store)) {
+        db.createObjectStore(IDB_CONFIG.store);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const getDiseaseConditionsFromIdb = async (): Promise<DiseaseCondition[] | null> => {
+  try {
+    const db = await openDiseaseDb();
+    if (!db) return null;
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_CONFIG.store, 'readonly');
+      const store = tx.objectStore(IDB_CONFIG.store);
+      const req = store.get(IDB_CONFIG.key);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+};
+
+const setDiseaseConditionsToIdb = async (value: DiseaseCondition[]) => {
+  try {
+    const db = await openDiseaseDb();
+    if (!db) return;
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(IDB_CONFIG.store, 'readwrite');
+      const store = tx.objectStore(IDB_CONFIG.store);
+      store.put(value, IDB_CONFIG.key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+};
+
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -69,7 +123,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const savedAppointments = localStorage.getItem(STORAGE_KEYS.appointments);
     const savedSessions = localStorage.getItem(STORAGE_KEYS.sessions);
     const savedPairs = localStorage.getItem(STORAGE_KEYS.pairs);
-    const savedDiseaseConditions = localStorage.getItem(STORAGE_KEYS.diseaseConditions);
 
     if (savedPatients) setPatients(JSON.parse(savedPatients));
     if (savedAppointments) setAppointments(JSON.parse(savedAppointments));
@@ -81,9 +134,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setBiomagneticPairs(initialBiomagneticPairs);
       localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(initialBiomagneticPairs));
     }
-    if (savedDiseaseConditions) {
-      setDiseaseConditions(JSON.parse(savedDiseaseConditions));
-    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadDiseaseConditions = async () => {
+      const fromIdb = await getDiseaseConditionsFromIdb();
+      if (fromIdb && isMounted) {
+        setDiseaseConditions(fromIdb);
+        return;
+      }
+      const savedDiseaseConditions = localStorage.getItem(STORAGE_KEYS.diseaseConditions);
+      if (savedDiseaseConditions && isMounted) {
+        const parsed = JSON.parse(savedDiseaseConditions);
+        setDiseaseConditions(parsed);
+        setDiseaseConditionsToIdb(parsed);
+      }
+    };
+    loadDiseaseConditions();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Save to localStorage whenever data changes
@@ -104,7 +175,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [biomagneticPairs]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.diseaseConditions, JSON.stringify(diseaseConditions));
+    setDiseaseConditionsToIdb(diseaseConditions);
+    try {
+      localStorage.setItem(STORAGE_KEYS.diseaseConditions, JSON.stringify(diseaseConditions));
+    } catch {
+      // ignore localStorage quota errors
+    }
   }, [diseaseConditions]);
 
   // Patient functions

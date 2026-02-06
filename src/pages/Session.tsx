@@ -259,7 +259,7 @@ export function SessionPage() {
   const getPairImagePath = (pairCode: string) => {
     const match = pairCode.match(/\d+/);
     const number = match ? match[0] : pairCode;
-    return `/pairs/${number}.png`;
+    return `/images/pares/${number}.png`;
   };
 
   return (
