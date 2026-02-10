@@ -58,7 +58,15 @@ export function PatientDetailPage() {
 
   const computedAge = getAgeFromBirthDate(patient.birthDate) ?? patient.age;
 
-  const InfoItem = ({ label, value, icon: Icon }: { label: string; value?: string | number | boolean; icon?: any }) => {
+  const InfoItem = ({
+    label,
+    value,
+    icon: Icon,
+  }: {
+    label: string;
+    value?: string | number | boolean;
+    icon?: React.ComponentType<{ className?: string }>;
+  }) => {
     if (value === undefined || value === null || value === '') return null;
     
     let displayValue = value;

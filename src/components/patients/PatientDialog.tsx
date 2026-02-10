@@ -33,6 +33,8 @@ interface PatientDialogProps {
 export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
   const { addPatient, updatePatient, getPatientByPhone } = useData();
   const isEditing = !!patient;
+  type SexValue = NonNullable<Patient['sex']>;
+  type BloodPressureValue = NonNullable<Patient['bloodPressure']>;
 
   const [formData, setFormData] = useState({
     phone: '',
@@ -247,7 +249,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
                   <Label htmlFor="sex">Sexo</Label>
                   <Select
                     value={formData.sex}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, sex: value as any }))}
+                    onValueChange={(value: SexValue) => setFormData(prev => ({ ...prev, sex: value }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar" />
@@ -333,7 +335,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
                   <Label htmlFor="bloodPressure">Tensión arterial</Label>
                   <Select
                     value={formData.bloodPressure}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, bloodPressure: value as any }))}
+                    onValueChange={(value: BloodPressureValue) => setFormData(prev => ({ ...prev, bloodPressure: value }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar" />

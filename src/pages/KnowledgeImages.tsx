@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { getPairImageFilename, getPairImageLabel } from '@/lib/pairImage';
 import { toast } from 'sonner';
 
 const MASTER_TEMPLATES = [
@@ -28,6 +29,133 @@ const MASTER_TEMPLATES = [
 ];
 
 type MarkerColor = 'black' | 'red';
+type PointMarker = { x: number; y: number; color: MarkerColor; template: string };
+
+const getMarkerSize = (template: string) =>
+  template.startsWith('CA') ? 60 : 60;
+
+const getMarkerStyle = (color: MarkerColor) => {
+  if (color === 'red') {
+    return { fill: '#ef4444', text: '+' };
+  }
+  return { fill: '#0f172a', text: '−' };
+};
+
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar imagen'));
+    img.src = src;
+  });
+
+const normalizeWhitespace = (value: string) =>
+  value
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizePointName = (value: string) =>
+  normalizeWhitespace(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const getPointImageCandidates = (pointName: string, suffix?: string) => {
+  const cleaned = normalizeWhitespace(pointName);
+  const variants = [
+    pointName,
+    cleaned,
+    cleaned.replace(' (D)', '(D)').replace(' (I)', '(I)'),
+    cleaned.replace('(D)', ' (D)').replace('(I)', ' (I)'),
+    cleaned.replace('(D/I)', '(D_I)'),
+    cleaned.replace(' (D/I)', ' (D_I)'),
+  ];
+  const withSuffix = (value: string) => (suffix ? `${value}${suffix}` : value);
+  const encoded = variants.flatMap(value => [
+    `/images/puntos/${encodeURIComponent(withSuffix(value))}.png`,
+    `/images/puntos/${encodeURIComponent(withSuffix(value.normalize('NFC')))}.png`,
+    `/images/puntos/${encodeURIComponent(withSuffix(value.normalize('NFD')))}.png`,
+    `/images/puntos/${encodeURIComponent(withSuffix(normalizePointName(value)))}.png`,
+  ]);
+  return Array.from(new Set(encoded));
+};
+
+const clearCanvas = (canvas: HTMLCanvasElement | null) => {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+};
+
+const drawMarkers = (
+  canvas: HTMLCanvasElement | null,
+  baseImage: HTMLImageElement | null,
+  markers: PointMarker[]
+) => {
+  if (!canvas || !baseImage) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
+
+  markers.forEach(({ x, y, color, template }) => {
+    const size = getMarkerSize(template);
+    const radius = size / 2;
+    const marker = getMarkerStyle(color);
+
+    ctx.beginPath();
+    ctx.fillStyle = marker.fill;
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 ${size * 0.85}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(marker.text, x, y + 1);
+  });
+};
+
+const loadExistingPointImage = async (
+  pointName: string,
+  pairCode: string,
+  defaultVariant: MarkerColor,
+  canvasRef: React.MutableRefObject<HTMLCanvasElement | null>,
+  setPointImage: React.Dispatch<React.SetStateAction<string | null>>,
+  baseImageRef: React.MutableRefObject<HTMLImageElement | null>,
+  setMarkers: React.Dispatch<React.SetStateAction<PointMarker[]>>
+) => {
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+  const mixedSuffix = `__mixto__${pairCode}`;
+  const colorSuffix = `__${defaultVariant === 'black' ? 'negro' : 'rojo'}`;
+  const candidates = [
+    ...getPointImageCandidates(pointName, mixedSuffix),
+    ...getPointImageCandidates(pointName, colorSuffix),
+  ];
+  for (const src of candidates) {
+    try {
+      const img = await loadImage(src);
+      baseImageRef.current = img;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      setMarkers([]);
+      setPointImage(src);
+      return;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  clearCanvas(canvasRef.current);
+  setMarkers([]);
+  setPointImage(null);
+};
 
 export function KnowledgeImagesPage() {
   const { biomagneticPairs } = useData();
@@ -83,66 +211,6 @@ export function KnowledgeImagesPage() {
     handleSelectPair(targetIndex);
   };
 
-  const getMarkerSize = (template: string) =>
-    template.startsWith('CA') ? 60 : 60;
-
-  const getMarkerStyle = (color: MarkerColor) => {
-    if (color === 'red') {
-      return { fill: '#ef4444', text: '+' };
-    }
-    return { fill: '#0f172a', text: '−' };
-  };
-
-  const loadImage = (src: string) =>
-    new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('No se pudo cargar imagen'));
-      img.src = src;
-    });
-
-  const normalizeWhitespace = (value: string) =>
-    value
-      .replace(/\u00A0/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-  const normalizePointName = (value: string) =>
-    normalizeWhitespace(value)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_+|_+$/g, '');
-
-  const getPointImageCandidates = (pointName: string, suffix?: string) => {
-    const cleaned = normalizeWhitespace(pointName);
-    const variants = [
-      pointName,
-      cleaned,
-      cleaned.replace(' (D)', '(D)').replace(' (I)', '(I)'),
-      cleaned.replace('(D)', ' (D)').replace('(I)', ' (I)'),
-      cleaned.replace('(D/I)', '(D_I)'),
-      cleaned.replace(' (D/I)', ' (D_I)'),
-    ];
-    const withSuffix = (value: string) => (suffix ? `${value}${suffix}` : value);
-    const encoded = variants.flatMap(value => [
-      `/images/puntos/${encodeURIComponent(withSuffix(value))}.png`,
-      `/images/puntos/${encodeURIComponent(withSuffix(value.normalize('NFC')))}.png`,
-      `/images/puntos/${encodeURIComponent(withSuffix(value.normalize('NFD')))}.png`,
-      `/images/puntos/${encodeURIComponent(withSuffix(normalizePointName(value)))}.png`,
-    ]);
-    const candidates = encoded;
-    return Array.from(new Set(candidates));
-  };
-
-  const clearCanvas = (canvas: HTMLCanvasElement | null) => {
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  };
-
   const drawBaseImage = async (template: string, canvas: HTMLCanvasElement | null, targetRef: React.MutableRefObject<HTMLImageElement | null>) => {
     if (!canvas) return;
     try {
@@ -155,35 +223,6 @@ export function KnowledgeImagesPage() {
     } catch {
       toast.error('No se pudo cargar la plantilla');
     }
-  };
-
-  const drawMarkers = (
-    canvas: HTMLCanvasElement | null,
-    baseImage: HTMLImageElement | null,
-    markers: { x: number; y: number; color: MarkerColor; template: string }[]
-  ) => {
-    if (!canvas || !baseImage) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
-
-    markers.forEach(({ x, y, color, template }) => {
-      const size = getMarkerSize(template);
-      const radius = size / 2;
-      const marker = getMarkerStyle(color);
-
-      ctx.beginPath();
-      ctx.fillStyle = marker.fill;
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `700 ${size * 0.85}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(marker.text, x, y + 1);
-    });
   };
 
   const getCanvasClickPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -203,8 +242,8 @@ export function KnowledgeImagesPage() {
     baseImageRef: React.MutableRefObject<HTMLImageElement | null>,
     canvasRef: React.MutableRefObject<HTMLCanvasElement | null>,
     setPointImage: React.Dispatch<React.SetStateAction<string | null>>,
-    markers: { x: number; y: number; color: MarkerColor; template: string }[],
-    setMarkers: React.Dispatch<React.SetStateAction<{ x: number; y: number; color: MarkerColor; template: string }[]>>
+    markers: PointMarker[],
+    setMarkers: React.Dispatch<React.SetStateAction<PointMarker[]>>
   ) => {
     if (!baseImageRef.current) return;
     const { x, y } = getCanvasClickPoint(event);
@@ -216,44 +255,6 @@ export function KnowledgeImagesPage() {
     if (canvasRef.current) {
       setPointImage(canvasRef.current.toDataURL('image/png'));
     }
-  };
-
-  const loadExistingPointImage = async (
-    pointName: string,
-    pairCode: string,
-    defaultVariant: MarkerColor,
-    canvasRef: React.MutableRefObject<HTMLCanvasElement | null>,
-    setPointImage: React.Dispatch<React.SetStateAction<string | null>>,
-    baseImageRef: React.MutableRefObject<HTMLImageElement | null>,
-    setMarkers: React.Dispatch<React.SetStateAction<{ x: number; y: number; color: MarkerColor; template: string }[]>>
-  ) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const mixedSuffix = `__mixto__${pairCode}`;
-    const colorSuffix = `__${defaultVariant === 'black' ? 'negro' : 'rojo'}`;
-    const candidates = [
-      ...getPointImageCandidates(pointName, mixedSuffix),
-      ...getPointImageCandidates(pointName, colorSuffix),
-    ];
-    for (const src of candidates) {
-      try {
-        const img = await loadImage(src);
-        baseImageRef.current = img;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        setMarkers([]);
-        setPointImage(src);
-        return;
-      } catch {
-        // try next candidate
-      }
-    }
-
-    clearCanvas(canvasRef.current);
-    setMarkers([]);
-    setPointImage(null);
   };
 
   const handleSavePointImage = (
@@ -309,9 +310,9 @@ export function KnowledgeImagesPage() {
 
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
-      link.download = `${pairNumber}.png`;
+      link.download = getPairImageFilename(currentPair.pairCode, currentPair.point1, currentPair.point2);
       link.click();
-      toast.success(`Imagen generada para par ${currentPair.pairCode}`);
+      toast.success(`${getPairImageLabel(currentPair.pairCode, currentPair.point1, currentPair.point2)} generada`);
     } catch {
       toast.error('No se pudo generar la imagen del par');
     }
@@ -335,7 +336,7 @@ export function KnowledgeImagesPage() {
     baseImage2Ref.current = null;
     loadExistingPointImage(currentPair.point1, currentPair.pairCode, 'black', canvas1Ref, setPoint1Image, baseImage1Ref, setMarkers1);
     loadExistingPointImage(currentPair.point2, currentPair.pairCode, 'red', canvas2Ref, setPoint2Image, baseImage2Ref, setMarkers2);
-  }, [currentPair?.point1, currentPair?.point2]);
+  }, [currentPair]);
 
   useEffect(() => {
     if (currentIndex >= orderedPairs.length) {
@@ -358,7 +359,7 @@ export function KnowledgeImagesPage() {
   const clearMarkers = (
     canvasRef: React.MutableRefObject<HTMLCanvasElement | null>,
     baseImageRef: React.MutableRefObject<HTMLImageElement | null>,
-    setMarkers: React.Dispatch<React.SetStateAction<{ x: number; y: number; color: MarkerColor; template: string }[]>>,
+    setMarkers: React.Dispatch<React.SetStateAction<PointMarker[]>>,
     setPointImage: React.Dispatch<React.SetStateAction<string | null>>
   ) => {
     setMarkers([]);

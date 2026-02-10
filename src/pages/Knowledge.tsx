@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Plus, Search, Edit, Trash2, BookOpen, Upload, Download, AlertTriangle, Stethoscope, Lightbulb, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -46,12 +46,7 @@ import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
 import { BiomagneticPair, DiseaseCondition } from '@/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { getPairImageLabel } from '@/lib/pairImage';
 import {
   Dialog,
   DialogContent,
@@ -82,12 +77,15 @@ export function KnowledgePage() {
   const uniquePathogens = [...new Set(biomagneticPairs.map(p => p.pathogen).filter(Boolean))];
   const uniqueTypes = [...new Set(biomagneticPairs.map(p => p.type).filter(Boolean))];
 
-  const normalizeText = (value?: string) =>
-    (value || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim();
+  const normalizeText = useCallback(
+    (value?: string) =>
+      (value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim(),
+    []
+  );
 
   const alphabet = useMemo(() => {
     const letters = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
@@ -182,15 +180,17 @@ export function KnowledgePage() {
     toast.success(`${biomagneticPairs.length} pares exportados`);
   };
 
-  const getFirstColumnValue = (row: Record<string, any>) => {
+  type SpreadsheetRow = Record<string, unknown>;
+
+  const getFirstColumnValue = (row: SpreadsheetRow) => {
     const firstKey = Object.keys(row)[0];
     return firstKey ? row[firstKey] : undefined;
   };
 
-  const buildDiseaseItems = (rows: Record<string, any>[]): DiseaseCondition[] => {
+  const buildDiseaseItems = (rows: SpreadsheetRow[]): DiseaseCondition[] => {
     return rows
       .map((row, index) => {
-        const normalizedRow = Object.entries(row).reduce<Record<string, any>>((acc, [key, value]) => {
+        const normalizedRow = Object.entries(row).reduce<SpreadsheetRow>((acc, [key, value]) => {
           acc[key.toLowerCase().trim()] = value;
           return acc;
         }, {});
@@ -233,7 +233,7 @@ export function KnowledgePage() {
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      const items = buildDiseaseItems(jsonData as Record<string, any>[]);
+      const items = buildDiseaseItems(jsonData as SpreadsheetRow[]);
       if (items.length === 0) {
         toast.error('No se encontraron filas válidas. Revisa los encabezados.');
         return;
@@ -633,13 +633,18 @@ export function KnowledgePage() {
         <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Imagen del par {imageDialogPair?.pairCode}</DialogTitle>
+              <DialogTitle>
+                {imageDialogPair
+                  ? getPairImageLabel(imageDialogPair.pairCode, imageDialogPair.point1, imageDialogPair.point2)
+                  : 'Imagen del par'}
+              </DialogTitle>
             </DialogHeader>
             {imageDialogPair && (
               <div className="w-full overflow-hidden rounded-lg border bg-muted/10">
                 <img
                   src={getPairImagePath(imageDialogPair)}
-                  alt={`Imagen del par ${imageDialogPair.pairCode}`}
+                  alt={getPairImageLabel(imageDialogPair.pairCode, imageDialogPair.point1, imageDialogPair.point2)}
+                  title={getPairImageLabel(imageDialogPair.pairCode, imageDialogPair.point1, imageDialogPair.point2)}
                   className="w-full h-auto object-contain"
                 />
               </div>

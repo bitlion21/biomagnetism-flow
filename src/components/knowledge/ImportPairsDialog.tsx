@@ -85,6 +85,17 @@ const COLUMN_MAPPINGS: Record<string, keyof ParsedPair> = {
   'recomendación': 'recommendations',
 };
 
+const isParsedPairKey = (value: string): value is keyof ParsedPair =>
+  value === 'pairCode' ||
+  value === 'point1' ||
+  value === 'point2' ||
+  value === 'name' ||
+  value === 'relation' ||
+  value === 'pathogen' ||
+  value === 'type' ||
+  value === 'symptoms' ||
+  value === 'recommendations';
+
 export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
   const { biomagneticPairs, addBiomagneticPair } = useData();
   const [file, setFile] = useState<File | null>(null);
@@ -136,7 +147,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
           }
 
           const headers = lines[0].split(/[,;]/).map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
-          const mappedHeaders = headers.map(h => COLUMN_MAPPINGS[h] || h);
+	          const mappedHeaders = headers.map(h => COLUMN_MAPPINGS[h] || h);
 
           const pairs: ParsedPair[] = [];
           
@@ -144,11 +155,11 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
             const values = lines[i].split(/[,;]/).map(v => v.trim().replace(/^["']|["']$/g, ''));
             const pair: Partial<ParsedPair> = {};
             
-            mappedHeaders.forEach((header, index) => {
-              if (values[index]) {
-                (pair as any)[header] = values[index];
-              }
-            });
+	            mappedHeaders.forEach((header, index) => {
+	              if (isParsedPairKey(header) && values[index]) {
+	                pair[header] = values[index];
+	              }
+	            });
 
             if (pair.point1 && pair.point2) {
               pairs.push({
@@ -205,10 +216,10 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
               const normalizedKey = key.toLowerCase().trim();
               const mappedKey = COLUMN_MAPPINGS[normalizedKey];
               
-              if (mappedKey && value) {
-                (pair as any)[mappedKey] = String(value).trim();
-              }
-            });
+	              if (mappedKey && value) {
+	                pair[mappedKey] = String(value).trim();
+	              }
+	            });
 
             if (pair.point1 && pair.point2) {
               pairs.push({
