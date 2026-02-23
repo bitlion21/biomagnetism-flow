@@ -53,16 +53,22 @@ export function SessionPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const [searchParams] = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
+  const sessionId = searchParams.get('sessionId');
   const navigate = useNavigate();
   const {
     getPatientById,
     getUniquePointValues,
     getPairsByPoint,
+    sessions,
     addSession,
+    updateSession,
     updateAppointment,
   } = useData();
 
   const patient = getPatientById(patientId || '');
+  const existingSession = sessionId
+    ? sessions.find(session => session.id === sessionId && session.patientId === patientId)
+    : undefined;
   const uniquePoints = getUniquePointValues();
 
   // Session state
@@ -83,6 +89,32 @@ export function SessionPage() {
   const [imageDialogPairCode, setImageDialogPairCode] = useState<string | null>(null);
 
   const DEFAULT_TIMER_SECONDS = 12 * 60;
+
+  useEffect(() => {
+    if (!existingSession) return;
+
+    setSelectedPairs(existingSession.selectedPairs || []);
+    setChecklist(
+      existingSession.clinicalChecklist?.length
+        ? existingSession.clinicalChecklist
+        : defaultClinicalChecklist.map(item => ({ ...item }))
+    );
+    setFreeNotes(existingSession.freeNotes || '');
+    setSummary(existingSession.summary || '');
+    setPairTimers(
+      (existingSession.selectedPairs || []).reduce<Record<string, { baseSeconds: number; remainingSeconds: number; isRunning: boolean }>>(
+        (acc, pair) => {
+          acc[pair.pairCode] = {
+            baseSeconds: DEFAULT_TIMER_SECONDS,
+            remainingSeconds: DEFAULT_TIMER_SECONDS,
+            isRunning: false,
+          };
+          return acc;
+        },
+        {}
+      )
+    );
+  }, [DEFAULT_TIMER_SECONDS, existingSession]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -172,22 +204,33 @@ export function SessionPage() {
       return;
     }
 
-    addSession({
-      patientId: patientId!,
-      appointmentId: appointmentId || undefined,
-      date: new Date().toISOString(),
-      summary: summary.trim() || undefined,
-      selectedPairs,
-      clinicalChecklist: checklist,
-      freeNotes: freeNotes.trim() || undefined,
-    });
+    if (existingSession) {
+      updateSession(existingSession.id, {
+        appointmentId: existingSession.appointmentId || appointmentId || undefined,
+        date: existingSession.date,
+        summary: summary.trim() || undefined,
+        selectedPairs,
+        clinicalChecklist: checklist,
+        freeNotes: freeNotes.trim() || undefined,
+      });
+    } else {
+      addSession({
+        patientId: patientId!,
+        appointmentId: appointmentId || undefined,
+        date: new Date().toISOString(),
+        summary: summary.trim() || undefined,
+        selectedPairs,
+        clinicalChecklist: checklist,
+        freeNotes: freeNotes.trim() || undefined,
+      });
+    }
 
     // Mark appointment as completed if exists
     if (appointmentId) {
       updateAppointment(appointmentId, { status: 'completed' });
     }
 
-    toast.success('Sesión guardada correctamente');
+    toast.success(existingSession ? 'Sesión actualizada correctamente' : 'Sesión guardada correctamente');
     navigate(`/patients/${patientId}`);
   };
 
@@ -276,13 +319,21 @@ export function SessionPage() {
               <User className="w-4 h-4" />
               {patient.name ? `${patient.name} ${patient.lastName || ''}`.trim() : patient.phone}
               <span>•</span>
-              <span>{format(new Date(), "d MMM yyyy", { locale: es })}</span>
+              <span>
+                {format(new Date(existingSession?.date || new Date()), "d MMM yyyy", { locale: es })}
+              </span>
+              {existingSession && (
+                <>
+                  <span>•</span>
+                  <span>Detalle / edición</span>
+                </>
+              )}
             </div>
           </div>
         </div>
         <Button onClick={handleSave}>
           <Save className="w-4 h-4 mr-2" />
-          Guardar Sesión
+          {existingSession ? 'Guardar cambios' : 'Guardar Sesión'}
         </Button>
       </div>
 
