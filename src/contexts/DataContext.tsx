@@ -47,6 +47,9 @@ interface DataContextType {
   // Protocols
   protocolItems: ProtocolItem[];
   replaceProtocolItems: (items: ProtocolItem[]) => void;
+
+  // Hybrid sync helpers
+  rehydrateFromCloud: () => Promise<boolean>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -389,6 +392,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore bundled disease loading errors
     }
+  };
+
+  const rehydrateFromCloud = async (): Promise<boolean> => {
+    if (!isHybridDataMode()) return false;
+
+    const bootstrap = await fetchHybridBootstrap();
+    if (!bootstrap.ok) return false;
+
+    if (Array.isArray(bootstrap.patients)) {
+      setPatients(ensureFixedPatient(bootstrap.patients.filter(isPatientRecord)));
+    }
+    if (Array.isArray(bootstrap.appointments)) {
+      setAppointments(ensureFixedAppointment(bootstrap.appointments.filter(isAppointmentRecord)));
+    }
+    if (Array.isArray(bootstrap.sessions)) {
+      setSessions(bootstrap.sessions.filter(isSessionRecord));
+    }
+    return true;
   };
 
   // Load data from localStorage on mount
@@ -766,6 +787,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       replaceDiseaseConditions,
       protocolItems,
       replaceProtocolItems,
+      rehydrateFromCloud,
     }}>
       {children}
     </DataContext.Provider>

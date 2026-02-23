@@ -82,6 +82,7 @@ async function upsertPatient(sql, payload) {
       data = excluded.data,
       updated_at = excluded.updated_at,
       deleted_at = null
+    where excluded.updated_at >= patients.updated_at
   `;
 }
 
@@ -126,6 +127,7 @@ async function upsertAppointment(sql, payload) {
       data = excluded.data,
       updated_at = excluded.updated_at,
       deleted_at = null
+    where excluded.updated_at >= appointments.updated_at
   `;
 }
 
@@ -171,6 +173,7 @@ async function upsertSession(sql, payload) {
       data = excluded.data,
       updated_at = excluded.updated_at,
       deleted_at = null
+    where excluded.updated_at >= sessions.updated_at
   `;
 }
 

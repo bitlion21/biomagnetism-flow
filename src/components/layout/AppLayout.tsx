@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Calendar, Users, Activity, BookOpen, CircleHelp, LogOut, Menu, RefreshCw, WifiOff, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -17,8 +18,10 @@ const navigation = [
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const { rehydrateFromCloud } = useData();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [rehydrating, setRehydrating] = useState(false);
   const syncStatus = useHybridSyncStatus();
 
   const syncBadge = !syncStatus.enabled ? null : (
@@ -37,6 +40,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {!syncStatus.isOnline ? 'Offline' : syncStatus.syncing ? 'Sincronizando...' : syncStatus.pendingCount > 0 ? `${syncStatus.pendingCount} pendientes` : 'Sincronizado'}
     </Badge>
   );
+
+  const handleRehydrate = async () => {
+    if (rehydrating || !syncStatus.enabled) return;
+    setRehydrating(true);
+    try {
+      await rehydrateFromCloud();
+    } finally {
+      setRehydrating(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -96,6 +109,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 disabled={syncStatus.syncing || !syncStatus.isOnline}
               >
                 Sync
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => void handleRehydrate()}
+                disabled={rehydrating}
+              >
+                {rehydrating ? 'Cargando...' : 'Recargar'}
               </Button>
             </div>
           )}
@@ -191,6 +213,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     disabled={syncStatus.syncing || !syncStatus.isOnline}
                   >
                     Sync
+                  </Button>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => void handleRehydrate()}
+                    disabled={rehydrating}
+                  >
+                    {rehydrating ? 'Cargando...' : 'Recargar nube'}
                   </Button>
                 </div>
               </div>
