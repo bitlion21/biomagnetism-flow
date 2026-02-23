@@ -227,7 +227,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
 
       const isHeaderRow =
         (thirdNorm === 'grupo' || thirdNorm === 'group') &&
-        (fourthNorm === 'tipo' || fourthNorm === 'categoria' || fourthNorm === 'clase');
+        (fourthNorm === 'tipo' || fourthNorm === 'categoria' || fourthNorm === 'clase' || fourthNorm === 'protocolo');
 
       if (isHeaderRow) return;
 

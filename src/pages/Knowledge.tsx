@@ -289,6 +289,13 @@ export function KnowledgePage() {
   const filteredProtocols = useMemo(() => {
     const query = normalizeText(protocolSearchQuery);
     return protocolItems.filter(item => {
+      const isHeaderRow =
+        normalizeText(item.columns[0]) === 'numero' &&
+        normalizeText(item.columns[1]) === 'par' &&
+        normalizeText(item.columns[2]) === 'grupo' &&
+        normalizeText(item.columns[3]) === 'protocolo';
+      if (isHeaderRow) return false;
+
       const matchesSearch =
         !query ||
         item.columns.some(columnValue => normalizeText(columnValue).includes(query));
@@ -666,7 +673,7 @@ export function KnowledgePage() {
                         <TableHead>Número</TableHead>
                         <TableHead>Par/Enfermedad</TableHead>
                         <TableHead>Grupo</TableHead>
-                        <TableHead>Tipo</TableHead>
+                        <TableHead>Protocolo</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
