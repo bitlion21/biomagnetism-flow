@@ -14,6 +14,7 @@ import { SessionPage } from "@/pages/Session";
 import { KnowledgePage } from "@/pages/Knowledge";
 import { KnowledgeImagesPage } from "@/pages/KnowledgeImages";
 import { DiseaseDetailPage } from "@/pages/DiseaseDetail";
+import { HelpPage } from "@/pages/Help";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -98,6 +99,11 @@ function AppRoutes() {
       <Route path="/knowledge/diseases/:id" element={
         <ProtectedRoute>
           <DiseaseDetailPage />
+        </ProtectedRoute>
+      } />
+      <Route path="/knowledge/help" element={
+        <ProtectedRoute>
+          <HelpPage />
         </ProtectedRoute>
       } />
       

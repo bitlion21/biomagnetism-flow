@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useData } from '@/contexts/DataContext';
-import { BiomagneticPair } from '@/types';
+import { ProtocolItem } from '@/types';
 import { toast } from 'sonner';
 
 interface ImportPairsDialogProps {
@@ -37,6 +37,12 @@ interface ImportResult {
   success: number;
   duplicates: number;
   errors: number;
+  protocolsUpdated: number | null;
+}
+
+interface ParsedWorkbookPayload {
+  pairs: ParsedPair[];
+  protocols: ProtocolItem[] | null;
 }
 
 // Column name mappings (Spanish to English)
@@ -97,9 +103,10 @@ const isParsedPairKey = (value: string): value is keyof ParsedPair =>
   value === 'recommendations';
 
 export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
-  const { biomagneticPairs, addBiomagneticPair } = useData();
+  const { biomagneticPairs, addBiomagneticPair, replaceProtocolItems } = useData();
   const [file, setFile] = useState<File | null>(null);
   const [parsedPairs, setParsedPairs] = useState<ParsedPair[]>([]);
+  const [parsedProtocols, setParsedProtocols] = useState<ProtocolItem[] | null>(null);
   const [importing, setImporting] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -113,16 +120,18 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
     setParseError(null);
     setImportResult(null);
     setParsedPairs([]);
+    setParsedProtocols(null);
 
     try {
-      const pairs = await parseFile(selectedFile);
-      setParsedPairs(pairs);
+      const parsed = await parseFile(selectedFile);
+      setParsedPairs(parsed.pairs);
+      setParsedProtocols(parsed.protocols);
     } catch (error) {
       setParseError(error instanceof Error ? error.message : 'Error al leer el archivo');
     }
   };
 
-  const parseFile = async (file: File): Promise<ParsedPair[]> => {
+  const parseFile = async (file: File): Promise<ParsedWorkbookPayload> => {
     const extension = file.name.split('.').pop()?.toLowerCase();
     
     if (extension === 'csv') {
@@ -134,7 +143,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
     }
   };
 
-  const parseCSV = (file: File): Promise<ParsedPair[]> => {
+  const parseCSV = (file: File): Promise<ParsedWorkbookPayload> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -180,7 +189,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
             throw new Error('No se encontraron pares válidos. Asegúrese de que el archivo tenga columnas "punto1" y "punto2"');
           }
 
-          resolve(pairs);
+          resolve({ pairs, protocols: null });
         } catch (error) {
           reject(error);
         }
@@ -190,18 +199,64 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
     });
   };
 
-  const parseExcel = (file: File): Promise<ParsedPair[]> => {
+  const normalizeText = (value: unknown) =>
+    String(value ?? '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  const parseProtocolSheet = (worksheet: XLSX.WorkSheet | undefined): ProtocolItem[] => {
+    if (!worksheet) return [];
+
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
+    const items: ProtocolItem[] = [];
+
+    rows.forEach((row, index) => {
+      const columns = (Array.isArray(row) ? row : [])
+        .map(cell => String(cell ?? '').trim())
+        .map(cell => cell.replace(/\s+/g, ' ').trim());
+
+      const hasData = columns.some(Boolean);
+      if (!hasData) return;
+
+      const third = columns[2] || '';
+      const fourth = columns[3] || '';
+      const thirdNorm = normalizeText(third);
+      const fourthNorm = normalizeText(fourth);
+
+      const isHeaderRow =
+        (thirdNorm === 'grupo' || thirdNorm === 'group') &&
+        (fourthNorm === 'tipo' || fourthNorm === 'categoria' || fourthNorm === 'clase');
+
+      if (isHeaderRow) return;
+
+      items.push({
+        id: `protocol-${Date.now().toString(36)}-${index}`,
+        columns,
+        group: third,
+        protocolCategory: fourth,
+      });
+    });
+
+    return items;
+  };
+
+  const parseExcel = (file: File): Promise<ParsedWorkbookPayload> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
-          
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
-          
-          const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet, { defval: '' });
+
+          const pairsSheet = workbook.Sheets['01.Pares'];
+          if (!pairsSheet) {
+            throw new Error('No se encontró la pestaña "01.Pares" en el archivo Excel');
+          }
+
+          const protocolsSheet = workbook.Sheets['02.Protocolos'];
+          const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(pairsSheet, { defval: '' });
           
           if (jsonData.length === 0) {
             throw new Error('El archivo está vacío o no tiene datos válidos');
@@ -240,7 +295,10 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
             throw new Error('No se encontraron pares válidos. Asegúrese de que el archivo tenga columnas "punto1" y "punto2"');
           }
 
-          resolve(pairs);
+          resolve({
+            pairs,
+            protocols: parseProtocolSheet(protocolsSheet),
+          });
         } catch (error) {
           reject(error);
         }
@@ -288,17 +346,29 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
       }
     }
 
-    setImportResult({ success, duplicates, errors });
+    if (parsedProtocols !== null) {
+      replaceProtocolItems(parsedProtocols);
+    }
+
+    setImportResult({
+      success,
+      duplicates,
+      errors,
+      protocolsUpdated: parsedProtocols !== null ? parsedProtocols.length : null,
+    });
     setImporting(false);
 
     if (success > 0) {
-      toast.success(`${success} pares importados correctamente`);
+      const protocolsMessage =
+        parsedProtocols !== null ? ` y ${parsedProtocols.length} protocolos actualizados` : '';
+      toast.success(`${success} pares importados correctamente${protocolsMessage}`);
     }
   };
 
   const handleClose = () => {
     setFile(null);
     setParsedPairs([]);
+    setParsedProtocols(null);
     setParseError(null);
     setImportResult(null);
     if (fileInputRef.current) {
@@ -313,7 +383,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
         <DialogHeader>
           <DialogTitle>Importar Pares Biomagnéticos</DialogTitle>
           <DialogDescription>
-            Sube un archivo CSV o Excel con los pares a importar.
+            Sube un archivo CSV o Excel. En Excel se usa `01.Pares` para pares y `02.Protocolos` para protocolos.
           </DialogDescription>
         </DialogHeader>
 
@@ -336,7 +406,7 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
             ) : (
               <>
                 <p className="text-sm font-medium">Haz clic para seleccionar archivo</p>
-                <p className="text-xs text-muted-foreground mt-1">CSV, XLSX o XLS</p>
+                <p className="text-xs text-muted-foreground mt-1">CSV, XLSX o XLS (Excel: 01.Pares y 02.Protocolos)</p>
               </>
             )}
           </div>
@@ -366,7 +436,8 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
               <CheckCircle2 className="h-4 w-4 text-primary" />
               <AlertTitle>Archivo leído correctamente</AlertTitle>
               <AlertDescription>
-                Se encontraron <strong>{parsedPairs.length}</strong> pares para importar.
+                Se encontraron <strong>{parsedPairs.length}</strong> pares para importar
+                {parsedProtocols !== null && <> y <strong>{parsedProtocols.length}</strong> protocolos.</>}.
               </AlertDescription>
             </Alert>
           )}
@@ -387,6 +458,9 @@ export function ImportPairsDialog({ open, onClose }: ImportPairsDialogProps) {
               <AlertDescription>
                 <ul className="text-xs mt-1">
                   <li>✓ {importResult.success} pares importados</li>
+                  {importResult.protocolsUpdated !== null && (
+                    <li>✓ {importResult.protocolsUpdated} protocolos actualizados</li>
+                  )}
                   {importResult.duplicates > 0 && (
                     <li>⚠ {importResult.duplicates} duplicados omitidos</li>
                   )}

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Edit, Trash2, BookOpen, Upload, Download, AlertTriangle, Stethoscope, Lightbulb, Image as ImageIcon } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, BookOpen, Upload, Download, AlertTriangle, Stethoscope, Lightbulb, Image as ImageIcon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useData } from '@/contexts/DataContext';
@@ -43,9 +43,8 @@ import {
 import { PairDialog } from '@/components/knowledge/PairDialog';
 import { PairInfoDialog } from '@/components/knowledge/PairInfoDialog';
 import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
-import { BiomagneticPair, DiseaseCondition } from '@/types';
+import { BiomagneticPair, DiseaseCondition, ProtocolItem } from '@/types';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { getPairImageLabel } from '@/lib/pairImage';
 import {
   Dialog,
@@ -55,12 +54,23 @@ import {
 } from '@/components/ui/dialog';
 
 export function KnowledgePage() {
-  const { biomagneticPairs, deleteBiomagneticPair, deleteAllBiomagneticPairs, diseaseConditions, replaceDiseaseConditions } = useData();
+  const {
+    biomagneticPairs,
+    deleteBiomagneticPair,
+    deleteAllBiomagneticPairs,
+    diseaseConditions,
+    replaceDiseaseConditions,
+    protocolItems,
+  } = useData();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchOnlyPoints, setSearchOnlyPoints] = useState(false);
   const [filterPathogen, setFilterPathogen] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [diseaseSearchQuery, setDiseaseSearchQuery] = useState('');
   const [selectedLetter, setSelectedLetter] = useState<string>('all');
+  const [protocolSearchQuery, setProtocolSearchQuery] = useState('');
+  const [protocolGroupFilter, setProtocolGroupFilter] = useState<string>('all');
+  const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingPair, setEditingPair] = useState<BiomagneticPair | undefined>();
@@ -96,16 +106,38 @@ export function KnowledgePage() {
     return letters;
   }, []);
 
+  const uniqueProtocolGroups = useMemo(
+    () =>
+      [...new Set(
+        protocolItems
+          .filter(item => normalizeText(item.protocolCategory) === normalizeText('Básico'))
+          .map(item => item.group)
+          .filter(Boolean)
+      )]
+        .map(value => value!.trim())
+        .filter(value => Boolean(value) && normalizeText(value) !== 'grupo')
+        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' })),
+    [normalizeText, protocolItems]
+  );
+
   // Filter pairs
   const filteredPairs = biomagneticPairs.filter(pair => {
     const query = normalizeText(searchQuery);
-    const matchesSearch = !query ||
-      normalizeText(pair.pairCode).includes(query) ||
-      normalizeText(pair.point1).includes(query) ||
-      normalizeText(pair.point2).includes(query) ||
-      normalizeText(pair.name).includes(query) ||
-      normalizeText(pair.pathogen).includes(query) ||
-      normalizeText(pair.symptoms).includes(query);
+    const matchesSearch = !query || (
+      searchOnlyPoints
+        ? (
+          normalizeText(pair.point1).includes(query) ||
+          normalizeText(pair.point2).includes(query)
+        )
+        : (
+          normalizeText(pair.pairCode).includes(query) ||
+          normalizeText(pair.point1).includes(query) ||
+          normalizeText(pair.point2).includes(query) ||
+          normalizeText(pair.name).includes(query) ||
+          normalizeText(pair.pathogen).includes(query) ||
+          normalizeText(pair.symptoms).includes(query)
+        )
+    );
     
     const typeNormalized = normalizeText(pair.type);
     const pathogenNormalized = normalizeText(pair.pathogen);
@@ -254,6 +286,33 @@ export function KnowledgePage() {
     });
   }, [diseaseConditions, diseaseSearchQuery, normalizeText, selectedLetter]);
 
+  const filteredProtocols = useMemo(() => {
+    const query = normalizeText(protocolSearchQuery);
+    return protocolItems.filter(item => {
+      const matchesSearch =
+        !query ||
+        item.columns.some(columnValue => normalizeText(columnValue).includes(query));
+
+      const matchesGroup =
+        protocolGroupFilter === 'all' ||
+        normalizeText(item.group) === normalizeText(protocolGroupFilter);
+
+      const categoryNormalized = normalizeText(item.protocolCategory);
+      const matchesCategory =
+        protocolCategoryFilter === 'all' ||
+        (protocolCategoryFilter === 'basic' && categoryNormalized === normalizeText('Básico')) ||
+        (protocolCategoryFilter === 'x-disease' && categoryNormalized === normalizeText('x Enfermedad'));
+
+      return matchesSearch && matchesGroup && matchesCategory;
+    });
+  }, [
+    normalizeText,
+    protocolCategoryFilter,
+    protocolGroupFilter,
+    protocolItems,
+    protocolSearchQuery,
+  ]);
+
   return (
     <TooltipProvider>
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
@@ -262,6 +321,11 @@ export function KnowledgePage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Base de Conocimiento</h1>
             <p className="text-muted-foreground">{biomagneticPairs.length} pares biomagnéticos</p>
+            <Button variant="link" className="px-0 h-auto mt-1" asChild>
+              <Link to="/knowledge/help">
+                Ayuda
+              </Link>
+            </Button>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" asChild>
@@ -318,8 +382,9 @@ export function KnowledgePage() {
         </div>
 
         <Tabs defaultValue="pairs" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="pairs">Lista de pares</TabsTrigger>
+            <TabsTrigger value="protocols">Protocolos</TabsTrigger>
             <TabsTrigger value="diseases">Enfermedades y afecciones</TabsTrigger>
           </TabsList>
 
@@ -328,14 +393,35 @@ export function KnowledgePage() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row gap-4">
+                  <Button
+                    type="button"
+                    variant={searchOnlyPoints ? 'default' : 'outline'}
+                    onClick={() => setSearchOnlyPoints(prev => !prev)}
+                    className="w-full sm:w-auto"
+                    aria-pressed={searchOnlyPoints}
+                  >
+                    pares
+                  </Button>
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       placeholder="Buscar por código, punto, nombre, patógeno, síntoma..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 pr-10"
                     />
+                    {searchQuery && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2"
+                        onClick={() => setSearchQuery('')}
+                        aria-label="Limpiar búsqueda de pares"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                   <Select value={filterPathogen} onValueChange={setFilterPathogen}>
                     <SelectTrigger className="w-full sm:w-40">
@@ -383,7 +469,7 @@ export function KnowledgePage() {
                       : 'Agrega tu primer par biomagnético'
                     }
                   </p>
-                  {!searchQuery && filterPathogen === 'all' && filterType === 'all' && (
+                  {!searchQuery && filterPathogen === 'all' && filterType === 'all' && !searchOnlyPoints && (
                     <Button onClick={() => handleOpenDialog()}>
                       <Plus className="w-4 h-4 mr-2" />
                       Agregar par
@@ -509,6 +595,100 @@ export function KnowledgePage() {
             )}
           </TabsContent>
 
+          <TabsContent value="protocols" className="space-y-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar en protocolos..."
+                      value={protocolSearchQuery}
+                      onChange={(e) => setProtocolSearchQuery(e.target.value)}
+                      className="pl-10 pr-10"
+                    />
+                    {protocolSearchQuery && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2"
+                        onClick={() => setProtocolSearchQuery('')}
+                        aria-label="Limpiar búsqueda de protocolos"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <Select value={protocolCategoryFilter} onValueChange={setProtocolCategoryFilter}>
+                    <SelectTrigger className="w-full sm:w-56">
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="basic">Básicos</SelectItem>
+                      <SelectItem value="x-disease">x enfermedad</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={protocolGroupFilter} onValueChange={setProtocolGroupFilter}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Filtrar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {uniqueProtocolGroups.map(group => (
+                        <SelectItem key={group} value={group}>{group}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {filteredProtocols.length === 0 ? (
+              <Card>
+                <CardContent className="empty-state py-16">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <BookOpen className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-medium text-foreground mb-1">Sin protocolos</h3>
+                  <p className="text-muted-foreground">
+                    Importa un XLSX desde "Lista de pares" con la pestaña <code>02.Protocolos</code> o revisa los filtros.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Número</TableHead>
+                        <TableHead>Par/Enfermedad</TableHead>
+                        <TableHead>Grupo</TableHead>
+                        <TableHead>Tipo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProtocols.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.columns[0] || '-'}</TableCell>
+                          <TableCell className="text-muted-foreground">{item.columns[1] || '-'}</TableCell>
+                          <TableCell>{item.group || '-'}</TableCell>
+                          <TableCell>
+                            {item.protocolCategory ? (
+                              <Badge variant="secondary">{item.protocolCategory}</Badge>
+                            ) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+            )}
+          </TabsContent>
+
           <TabsContent value="diseases" className="space-y-4">
             <Card>
               <CardContent className="p-4 space-y-4">
@@ -519,8 +699,20 @@ export function KnowledgePage() {
                       placeholder="Buscar enfermedad o afección..."
                       value={diseaseSearchQuery}
                       onChange={(e) => setDiseaseSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 pr-10"
                     />
+                    {diseaseSearchQuery && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2"
+                        onClick={() => setDiseaseSearchQuery('')}
+                        aria-label="Limpiar búsqueda de enfermedades"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                   <input
                     ref={diseaseFileInputRef}

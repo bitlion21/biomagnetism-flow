@@ -83,6 +83,13 @@ export interface DiseaseCondition {
   url?: string;
 }
 
+export interface ProtocolItem {
+  id: string;
+  columns: string[];
+  group?: string; // 3ra columna
+  protocolCategory?: string; // 4ta columna
+}
+
 // User type for simple auth
 export interface User {
   username: string;
@@ -97,4 +104,5 @@ export interface AppState {
   sessions: Session[];
   biomagneticPairs: BiomagneticPair[];
   diseaseConditions: DiseaseCondition[];
+  protocolItems: ProtocolItem[];
 }

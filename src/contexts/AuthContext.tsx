@@ -10,9 +10,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// MVP credentials
-const VALID_USERNAME = 'user';
-const VALID_PASSWORD = '123';
+const VALID_CREDENTIALS: Record<string, string> = {
+  test: 'bio123',
+  cristina: 'biomag2026',
+  leo: '2225',
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -22,14 +24,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for existing session
     const savedUser = localStorage.getItem('biomag_user');
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      try {
+        const parsedUser = JSON.parse(savedUser) as User;
+        const savedUsername = parsedUser?.username?.trim().toLowerCase();
+        if (savedUsername && savedUsername in VALID_CREDENTIALS) {
+          setUser({ ...parsedUser, username: savedUsername, isAuthenticated: true });
+        } else {
+          localStorage.removeItem('biomag_user');
+        }
+      } catch {
+        localStorage.removeItem('biomag_user');
+      }
     }
     setIsLoading(false);
   }, []);
 
   const login = (username: string, password: string): boolean => {
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-      const newUser: User = { username, isAuthenticated: true };
+    const normalizedUsername = username.trim().toLowerCase();
+    const expectedPassword = VALID_CREDENTIALS[normalizedUsername];
+
+    if (expectedPassword && password === expectedPassword) {
+      const newUser: User = { username: normalizedUsername, isAuthenticated: true };
       setUser(newUser);
       localStorage.setItem('biomag_user', JSON.stringify(newUser));
       return true;

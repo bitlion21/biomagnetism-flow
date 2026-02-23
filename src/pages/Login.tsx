@@ -104,14 +104,6 @@ export function LoginPage() {
                 {isLoading ? 'Ingresando...' : 'Ingresar'}
               </Button>
             </form>
-
-            {/* MVP hint */}
-            <div className="mt-6 p-3 bg-muted rounded-lg">
-              <p className="text-xs text-muted-foreground text-center">
-                <strong>MVP:</strong> Usuario: <code className="bg-background px-1 py-0.5 rounded">user</code> / 
-                Contraseña: <code className="bg-background px-1 py-0.5 rounded">123</code>
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>

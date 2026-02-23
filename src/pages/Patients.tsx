@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Phone, User, MoreVertical, FileText } from 'lucide-react';
-import { useData } from '@/contexts/DataContext';
+import { Plus, Search, Phone, User, MoreVertical, FileText, X } from 'lucide-react';
+import { FIXED_PATIENT_ID, useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -72,8 +72,20 @@ export function PatientsPage() {
           placeholder="Buscar por nombre, teléfono o email..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+          className="pl-10 pr-10"
         />
+        {searchQuery && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2"
+            onClick={() => setSearchQuery('')}
+            aria-label="Limpiar búsqueda"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Patients list */}
@@ -104,6 +116,7 @@ export function PatientsPage() {
         <div className="space-y-3">
           {filteredPatients.map((patient) => {
             const sessions = getSessionsByPatient(patient.id);
+            const isProtectedPatient = patient.id === FIXED_PATIENT_ID;
             return (
               <Card 
                 key={patient.id} 
@@ -162,15 +175,19 @@ export function PatientsPage() {
                           Iniciar sesión
                         </DropdownMenuItem>
                         <DropdownMenuItem 
+                          disabled={isProtectedPatient}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isProtectedPatient) {
+                              return;
+                            }
                             if (confirm('¿Estás seguro de eliminar este paciente?')) {
                               deletePatient(patient.id);
                             }
                           }}
-                          className="text-destructive"
+                          className={isProtectedPatient ? "text-muted-foreground" : "text-destructive"}
                         >
-                          Eliminar paciente
+                          {isProtectedPatient ? 'Paciente protegido (no se puede borrar)' : 'Eliminar paciente'}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

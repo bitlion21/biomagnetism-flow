@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Calendar, Users, Activity, BookOpen, LogOut, Menu, X } from 'lucide-react';
+import { Calendar, Users, Activity, BookOpen, CircleHelp, LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ const navigation = [
   { name: 'Agenda', href: '/', icon: Calendar },
   { name: 'Pacientes', href: '/patients', icon: Users },
   { name: 'Base de Conocimiento', href: '/knowledge', icon: BookOpen },
+  { name: 'Ayuda', href: '/knowledge/help', icon: CircleHelp },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {

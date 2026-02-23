@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Patient, Appointment, Session, BiomagneticPair, DiseaseCondition } from '@/types';
+import { Patient, Appointment, Session, BiomagneticPair, DiseaseCondition, ProtocolItem } from '@/types';
 import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
 
 interface DataContextType {
@@ -39,6 +39,10 @@ interface DataContextType {
   // Disease conditions
   diseaseConditions: DiseaseCondition[];
   replaceDiseaseConditions: (items: DiseaseCondition[]) => void;
+
+  // Protocols
+  protocolItems: ProtocolItem[];
+  replaceProtocolItems: (items: ProtocolItem[]) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -49,6 +53,54 @@ const STORAGE_KEYS = {
   sessions: 'biomag_sessions',
   pairs: 'biomag_pairs',
   diseaseConditions: 'biomag_disease_conditions',
+  protocolItems: 'biomag_protocol_items',
+};
+
+export const FIXED_PATIENT_ID = 'fixed-patient-0';
+export const FIXED_PATIENT_PHONE = '+34 600 000 000';
+export const FIXED_APPOINTMENT_ID = 'fixed-appointment-patient-0-2050-01-01-0800';
+
+const FIXED_PATIENT_CREATED_AT = '2026-01-01T00:00:00.000Z';
+const FIXED_APPOINTMENT_CREATED_AT = '2026-01-01T00:00:00.000Z';
+
+const buildFixedPatient = (): Patient => ({
+  id: FIXED_PATIENT_ID,
+  phone: FIXED_PATIENT_PHONE,
+  name: 'Paciente 0',
+  lastName: 'Test',
+  email: 'pacientecero@biomag.es',
+  birthDate: '2000-01-01',
+  sex: 'male',
+  createdAt: FIXED_PATIENT_CREATED_AT,
+  updatedAt: FIXED_PATIENT_CREATED_AT,
+});
+
+const buildFixedAppointment = (): Appointment => ({
+  id: FIXED_APPOINTMENT_ID,
+  patientId: FIXED_PATIENT_ID,
+  date: '2050-01-01',
+  time: '08:00',
+  duration: 60,
+  status: 'scheduled',
+  createdAt: FIXED_APPOINTMENT_CREATED_AT,
+});
+
+const ensureFixedPatient = (items: Patient[]): Patient[] => {
+  const rest = items.filter(
+    (patient) => patient.id !== FIXED_PATIENT_ID && patient.phone !== FIXED_PATIENT_PHONE
+  );
+  return [...rest, buildFixedPatient()];
+};
+
+const ensureFixedAppointment = (items: Appointment[]): Appointment[] => {
+  const rest = items.filter((appointment) => {
+    const isSameFixedSlot =
+      appointment.patientId === FIXED_PATIENT_ID &&
+      appointment.date === '2050-01-01' &&
+      appointment.time === '08:00';
+    return appointment.id !== FIXED_APPOINTMENT_ID && !isSameFixedSlot;
+  });
+  return [...rest, buildFixedAppointment()];
 };
 
 const IDB_CONFIG = {
@@ -116,6 +168,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [biomagneticPairs, setBiomagneticPairs] = useState<BiomagneticPair[]>([]);
   const [diseaseConditions, setDiseaseConditions] = useState<DiseaseCondition[]>([]);
+  const [protocolItems, setProtocolItems] = useState<ProtocolItem[]>([]);
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -123,9 +176,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const savedAppointments = localStorage.getItem(STORAGE_KEYS.appointments);
     const savedSessions = localStorage.getItem(STORAGE_KEYS.sessions);
     const savedPairs = localStorage.getItem(STORAGE_KEYS.pairs);
+    const savedProtocolItems = localStorage.getItem(STORAGE_KEYS.protocolItems);
 
-    if (savedPatients) setPatients(JSON.parse(savedPatients));
-    if (savedAppointments) setAppointments(JSON.parse(savedAppointments));
+    if (savedPatients) {
+      setPatients(ensureFixedPatient(JSON.parse(savedPatients)));
+    } else {
+      setPatients(ensureFixedPatient([]));
+    }
+    if (savedAppointments) {
+      setAppointments(ensureFixedAppointment(JSON.parse(savedAppointments)));
+    } else {
+      setAppointments(ensureFixedAppointment([]));
+    }
     if (savedSessions) setSessions(JSON.parse(savedSessions));
     if (savedPairs) {
       setBiomagneticPairs(JSON.parse(savedPairs));
@@ -134,6 +196,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setBiomagneticPairs(initialBiomagneticPairs);
       localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(initialBiomagneticPairs));
     }
+    if (savedProtocolItems) setProtocolItems(JSON.parse(savedProtocolItems));
   }, []);
 
   useEffect(() => {
@@ -183,6 +246,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [diseaseConditions]);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.protocolItems, JSON.stringify(protocolItems));
+  }, [protocolItems]);
+
   // Patient functions
   const addPatient = (data: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Patient => {
     const now = new Date().toISOString();
@@ -197,12 +264,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const updatePatient = (id: string, data: Partial<Patient>) => {
+    if (id === FIXED_PATIENT_ID) {
+      setPatients(prev => ensureFixedPatient(prev));
+      return;
+    }
     setPatients(prev => prev.map(p => 
       p.id === id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
     ));
   };
 
   const deletePatient = (id: string) => {
+    if (id === FIXED_PATIENT_ID) return;
     setPatients(prev => prev.filter(p => p.id !== id));
     // Also delete related appointments and sessions
     setAppointments(prev => prev.filter(a => a.patientId !== id));
@@ -219,6 +291,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const canAddAppointmentOnDate = (date: string) => true;
 
   const addAppointment = (data: Omit<Appointment, 'id' | 'createdAt'>): Appointment | null => {
+    if (
+      data.patientId === FIXED_PATIENT_ID &&
+      data.date === '2050-01-01' &&
+      data.time === '08:00'
+    ) {
+      return appointments.find(a => a.id === FIXED_APPOINTMENT_ID) || buildFixedAppointment();
+    }
+
     const newAppointment: Appointment = {
       ...data,
       id: generateId(),
@@ -229,12 +309,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const updateAppointment = (id: string, data: Partial<Appointment>) => {
+    if (id === FIXED_APPOINTMENT_ID) {
+      setAppointments(prev => ensureFixedAppointment(prev));
+      return;
+    }
     setAppointments(prev => prev.map(a => 
       a.id === id ? { ...a, ...data } : a
     ));
   };
 
   const deleteAppointment = (id: string) => {
+    if (id === FIXED_APPOINTMENT_ID) return;
     setAppointments(prev => prev.filter(a => a.id !== id));
   };
 
@@ -303,6 +388,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setDiseaseConditions(items);
   };
 
+  const replaceProtocolItems = (items: ProtocolItem[]) => {
+    setProtocolItems(items);
+  };
+
   return (
     <DataContext.Provider value={{
       patients,
@@ -332,6 +421,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       getUniquePointValues,
       diseaseConditions,
       replaceDiseaseConditions,
+      protocolItems,
+      replaceProtocolItems,
     }}>
       {children}
     </DataContext.Provider>
