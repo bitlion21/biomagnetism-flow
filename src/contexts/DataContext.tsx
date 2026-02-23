@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import * as XLSX from 'xlsx';
 import { Patient, Appointment, Session, BiomagneticPair, DiseaseCondition, ProtocolItem } from '@/types';
 import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
 
@@ -55,6 +56,9 @@ const STORAGE_KEYS = {
   diseaseConditions: 'biomag_disease_conditions',
   protocolItems: 'biomag_protocol_items',
 };
+
+const BUNDLED_PAIRS_FILE = '/data/pares_biomagneticos_OK_rev.05.xlsx';
+const BUNDLED_DISEASES_FILE = '/data/MedLinePlus_Enfermedades_v1.xlsx';
 
 export const FIXED_PATIENT_ID = 'fixed-patient-0';
 export const FIXED_PATIENT_PHONE = '+34 600 000 000';
@@ -157,6 +161,154 @@ const setDiseaseConditionsToIdb = async (value: DiseaseCondition[]) => {
   }
 };
 
+type PairRow = Record<string, unknown>;
+type GenericRow = Record<string, unknown>;
+
+const normalizeText = (value: unknown) =>
+  String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+const PAIR_COLUMN_MAPPINGS: Record<string, keyof Omit<BiomagneticPair, 'id'>> = {
+  codigo: 'pairCode',
+  'código': 'pairCode',
+  code: 'pairCode',
+  paircode: 'pairCode',
+  'punto 1': 'point1',
+  punto1: 'point1',
+  point1: 'point1',
+  'point 1': 'point1',
+  'punto 2': 'point2',
+  punto2: 'point2',
+  point2: 'point2',
+  'point 2': 'point2',
+  nombre: 'name',
+  name: 'name',
+  relacion: 'relation',
+  'relación': 'relation',
+  relation: 'relation',
+  patogeno: 'pathogen',
+  'patógeno': 'pathogen',
+  pathogen: 'pathogen',
+  tipo: 'type',
+  type: 'type',
+  sintomatologia: 'symptoms',
+  'sintomatología': 'symptoms',
+  sintomas: 'symptoms',
+  'síntomas': 'symptoms',
+  symptoms: 'symptoms',
+  recomendaciones: 'recommendations',
+  recommendation: 'recommendations',
+  recommendations: 'recommendations',
+};
+
+const parsePairsFromWorkbook = (workbook: XLSX.WorkBook): Omit<BiomagneticPair, 'id'>[] => {
+  const worksheet = workbook.Sheets['01.Pares'];
+  if (!worksheet) return [];
+
+  const jsonRows = XLSX.utils.sheet_to_json<PairRow>(worksheet, { defval: '' });
+  return jsonRows
+    .map((row) => {
+      const pair: Partial<Omit<BiomagneticPair, 'id'>> = {};
+      Object.entries(row).forEach(([key, value]) => {
+        const mappedKey = PAIR_COLUMN_MAPPINGS[key.toLowerCase().trim()];
+        if (!mappedKey) return;
+        const textValue = String(value ?? '').trim();
+        if (!textValue) return;
+        (pair as Record<string, string>)[mappedKey] = textValue;
+      });
+
+      if (!pair.point1 || !pair.point2) return null;
+      if (!pair.pairCode) return null;
+
+      return {
+        pairCode: pair.pairCode,
+        point1: pair.point1,
+        point2: pair.point2,
+        name: pair.name,
+        relation: pair.relation,
+        pathogen: pair.pathogen,
+        type: pair.type,
+        symptoms: pair.symptoms,
+        recommendations: pair.recommendations,
+      } as Omit<BiomagneticPair, 'id'>;
+    })
+    .filter(Boolean) as Omit<BiomagneticPair, 'id'>[];
+};
+
+const parseProtocolsFromWorkbook = (workbook: XLSX.WorkBook): Array<Omit<ProtocolItem, 'id'>> => {
+  const worksheet = workbook.Sheets['02.Protocolos'];
+  if (!worksheet) return [];
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
+  return rows
+    .map((row) => (Array.isArray(row) ? row : []))
+    .map((row) => row.map((cell) => String(cell ?? '').replace(/\s+/g, ' ').trim()))
+    .filter((columns) => columns.some(Boolean))
+    .filter((columns) => {
+      const third = normalizeText(columns[2]);
+      const fourth = normalizeText(columns[3]);
+      return !(third === 'grupo' && (fourth === 'protocolo' || fourth === 'tipo' || fourth === 'categoria'));
+    })
+    .map((columns) => ({
+      columns,
+      group: columns[2] || '',
+      protocolCategory: columns[3] || '',
+    }));
+};
+
+const getFirstColumnValue = (row: GenericRow) => {
+  const firstKey = Object.keys(row)[0];
+  return firstKey ? row[firstKey] : undefined;
+};
+
+const parseDiseaseConditionsFromWorkbook = (workbook: XLSX.WorkBook): Array<Omit<DiseaseCondition, 'id'>> => {
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  if (!worksheet) return [];
+
+  const rows = XLSX.utils.sheet_to_json<GenericRow>(worksheet, { defval: '' });
+  return rows
+    .map((row) => {
+      const normalizedRow = Object.entries(row).reduce<GenericRow>((acc, [key, value]) => {
+        acc[key.toLowerCase().trim()] = value;
+        return acc;
+      }, {});
+
+      const name =
+        normalizedRow['nombre'] ||
+        normalizedRow['enfermedad'] ||
+        normalizedRow['afeccion'] ||
+        normalizedRow['afecion'] ||
+        normalizedRow['nombre_enfermedad'] ||
+        normalizedRow['name'] ||
+        normalizedRow['disease'] ||
+        getFirstColumnValue(row);
+      const description =
+        normalizedRow['texto'] ||
+        normalizedRow['descripcion'] ||
+        normalizedRow['descripción'] ||
+        normalizedRow['notas'] ||
+        normalizedRow['notes'] ||
+        normalizedRow['description'];
+      const letter = normalizedRow['letra'];
+      const url = normalizedRow['url'] || normalizedRow['enlace'];
+
+      const cleanName = typeof name === 'string' ? name.trim() : String(name ?? '').trim();
+      if (!cleanName) return null;
+
+      return {
+        name: cleanName,
+        description: typeof description === 'string' ? description.trim() : undefined,
+        letter: typeof letter === 'string' ? letter.trim().toUpperCase() : cleanName.charAt(0).toUpperCase(),
+        url: typeof url === 'string' ? url.trim() : undefined,
+      } as Omit<DiseaseCondition, 'id'>;
+    })
+    .filter(Boolean) as Array<Omit<DiseaseCondition, 'id'>>;
+};
+
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -169,6 +321,51 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [biomagneticPairs, setBiomagneticPairs] = useState<BiomagneticPair[]>([]);
   const [diseaseConditions, setDiseaseConditions] = useState<DiseaseCondition[]>([]);
   const [protocolItems, setProtocolItems] = useState<ProtocolItem[]>([]);
+
+  const loadBundledPairsAndProtocols = async (options: { loadPairs: boolean; loadProtocols: boolean }) => {
+    if (!options.loadPairs && !options.loadProtocols) return;
+
+    try {
+      const response = await fetch(BUNDLED_PAIRS_FILE);
+      if (!response.ok) return;
+      const buffer = await response.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+
+      if (options.loadPairs) {
+        const parsedPairs = parsePairsFromWorkbook(workbook);
+        if (parsedPairs.length > 0) {
+          setBiomagneticPairs(parsedPairs.map((pair) => ({ ...pair, id: generateId() })));
+        }
+      }
+
+      if (options.loadProtocols) {
+        const parsedProtocols = parseProtocolsFromWorkbook(workbook);
+        setProtocolItems(parsedProtocols.map((item) => ({ ...item, id: generateId() })));
+      }
+    } catch {
+      // Fall back to current behavior if bundled files are unavailable
+    }
+  };
+
+  const loadBundledDiseaseConditions = async () => {
+    try {
+      const response = await fetch(BUNDLED_DISEASES_FILE);
+      if (!response.ok) return;
+      const buffer = await response.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const parsedDiseases = parseDiseaseConditionsFromWorkbook(workbook);
+      if (parsedDiseases.length > 0) {
+        setDiseaseConditions(
+          parsedDiseases.map((item, index) => ({
+            ...item,
+            id: `seed-disease-${index}-${Date.now().toString(36)}`,
+          }))
+        );
+      }
+    } catch {
+      // Ignore bundled disease loading errors
+    }
+  };
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -196,7 +393,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setBiomagneticPairs(initialBiomagneticPairs);
       localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(initialBiomagneticPairs));
     }
-    if (savedProtocolItems) setProtocolItems(JSON.parse(savedProtocolItems));
+    if (savedProtocolItems) {
+      setProtocolItems(JSON.parse(savedProtocolItems));
+    }
+
+    void loadBundledPairsAndProtocols({
+      loadPairs: !savedPairs,
+      loadProtocols: !savedProtocolItems,
+    });
   }, []);
 
   useEffect(() => {
@@ -212,6 +416,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(savedDiseaseConditions);
         setDiseaseConditions(parsed);
         setDiseaseConditionsToIdb(parsed);
+        return;
+      }
+
+      if (isMounted) {
+        await loadBundledDiseaseConditions();
       }
     };
     loadDiseaseConditions();
