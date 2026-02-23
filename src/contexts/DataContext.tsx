@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as XLSX from 'xlsx';
 import { Patient, Appointment, Session, BiomagneticPair, DiseaseCondition, ProtocolItem } from '@/types';
 import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
+import { isHybridDataMode } from '@/lib/dataRuntime';
+import { enqueueSyncMutation } from '@/lib/syncQueue';
+import { fetchHybridBootstrap, syncPendingMutations } from '@/lib/syncClient';
 
 interface DataContextType {
   // Patients
@@ -309,6 +312,27 @@ const parseDiseaseConditionsFromWorkbook = (workbook: XLSX.WorkBook): Array<Omit
     .filter(Boolean) as Array<Omit<DiseaseCondition, 'id'>>;
 };
 
+const isPatientRecord = (value: unknown): value is Patient =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  typeof (value as Patient).id === 'string' &&
+  typeof (value as Patient).phone === 'string';
+
+const isAppointmentRecord = (value: unknown): value is Appointment =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  typeof (value as Appointment).id === 'string' &&
+  typeof (value as Appointment).patientId === 'string' &&
+  typeof (value as Appointment).date === 'string' &&
+  typeof (value as Appointment).time === 'string';
+
+const isSessionRecord = (value: unknown): value is Session =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  typeof (value as Session).id === 'string' &&
+  typeof (value as Session).patientId === 'string' &&
+  typeof (value as Session).date === 'string';
+
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -401,6 +425,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       loadPairs: !savedPairs,
       loadProtocols: !savedProtocolItems,
     });
+
+    if (isHybridDataMode()) {
+      void (async () => {
+        const bootstrap = await fetchHybridBootstrap();
+        if (!bootstrap.ok) return;
+
+        if (!savedPatients && Array.isArray(bootstrap.patients)) {
+          setPatients(ensureFixedPatient(bootstrap.patients.filter(isPatientRecord)));
+        }
+        if (!savedAppointments && Array.isArray(bootstrap.appointments)) {
+          setAppointments(ensureFixedAppointment(bootstrap.appointments.filter(isAppointmentRecord)));
+        }
+        if (!savedSessions && Array.isArray(bootstrap.sessions)) {
+          setSessions(bootstrap.sessions.filter(isSessionRecord));
+        }
+      })();
+    }
   }, []);
 
   useEffect(() => {
@@ -459,6 +500,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEYS.protocolItems, JSON.stringify(protocolItems));
   }, [protocolItems]);
 
+  useEffect(() => {
+    if (!isHybridDataMode()) return;
+
+    void syncPendingMutations();
+
+    const onOnline = () => {
+      void syncPendingMutations();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void syncPendingMutations();
+      }
+    };
+
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
+
   // Patient functions
   const addPatient = (data: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Patient => {
     const now = new Date().toISOString();
@@ -469,6 +534,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updatedAt: now,
     };
     setPatients(prev => [...prev, newPatient]);
+    enqueueSyncMutation({
+      entity: 'patients',
+      action: 'upsert',
+      recordId: newPatient.id,
+      payload: newPatient as unknown as Record<string, unknown>,
+    });
     return newPatient;
   };
 
@@ -477,17 +548,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setPatients(prev => ensureFixedPatient(prev));
       return;
     }
+    const nextUpdatedAt = new Date().toISOString();
+    const current = patients.find(p => p.id === id);
+    const nextRecord = current ? { ...current, ...data, updatedAt: nextUpdatedAt } : { id, ...data, updatedAt: nextUpdatedAt };
     setPatients(prev => prev.map(p => 
-      p.id === id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+      p.id === id ? (nextRecord as Patient) : p
     ));
+    enqueueSyncMutation({
+      entity: 'patients',
+      action: 'upsert',
+      recordId: id,
+      payload: nextRecord as unknown as Record<string, unknown>,
+    });
   };
 
   const deletePatient = (id: string) => {
     if (id === FIXED_PATIENT_ID) return;
+    const relatedAppointmentIds = appointments.filter(a => a.patientId === id).map(a => a.id);
+    const relatedSessionIds = sessions.filter(s => s.patientId === id).map(s => s.id);
     setPatients(prev => prev.filter(p => p.id !== id));
     // Also delete related appointments and sessions
     setAppointments(prev => prev.filter(a => a.patientId !== id));
     setSessions(prev => prev.filter(s => s.patientId !== id));
+    enqueueSyncMutation({
+      entity: 'patients',
+      action: 'delete',
+      recordId: id,
+    });
+    relatedAppointmentIds.forEach((appointmentId) => {
+      enqueueSyncMutation({
+        entity: 'appointments',
+        action: 'delete',
+        recordId: appointmentId,
+      });
+    });
+    relatedSessionIds.forEach((sessionId) => {
+      enqueueSyncMutation({
+        entity: 'sessions',
+        action: 'delete',
+        recordId: sessionId,
+      });
+    });
   };
 
   const getPatientById = (id: string) => patients.find(p => p.id === id);
@@ -514,6 +615,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setAppointments(prev => [...prev, newAppointment]);
+    enqueueSyncMutation({
+      entity: 'appointments',
+      action: 'upsert',
+      recordId: newAppointment.id,
+      payload: newAppointment as unknown as Record<string, unknown>,
+    });
     return newAppointment;
   };
 
@@ -522,14 +629,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAppointments(prev => ensureFixedAppointment(prev));
       return;
     }
+    const current = appointments.find(a => a.id === id);
+    const nextRecord = current ? { ...current, ...data } : { id, ...data };
     setAppointments(prev => prev.map(a => 
-      a.id === id ? { ...a, ...data } : a
+      a.id === id ? (nextRecord as Appointment) : a
     ));
+    enqueueSyncMutation({
+      entity: 'appointments',
+      action: 'upsert',
+      recordId: id,
+      payload: nextRecord as unknown as Record<string, unknown>,
+    });
   };
 
   const deleteAppointment = (id: string) => {
     if (id === FIXED_APPOINTMENT_ID) return;
     setAppointments(prev => prev.filter(a => a.id !== id));
+    enqueueSyncMutation({
+      entity: 'appointments',
+      action: 'delete',
+      recordId: id,
+    });
   };
 
   // Session functions
@@ -540,13 +660,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setSessions(prev => [...prev, newSession]);
+    enqueueSyncMutation({
+      entity: 'sessions',
+      action: 'upsert',
+      recordId: newSession.id,
+      payload: newSession as unknown as Record<string, unknown>,
+    });
     return newSession;
   };
 
   const updateSession = (id: string, data: Partial<Session>) => {
+    const current = sessions.find(s => s.id === id);
+    const nextRecord = current ? { ...current, ...data } : { id, ...data };
     setSessions(prev => prev.map(s => 
-      s.id === id ? { ...s, ...data } : s
+      s.id === id ? (nextRecord as Session) : s
     ));
+    enqueueSyncMutation({
+      entity: 'sessions',
+      action: 'upsert',
+      recordId: id,
+      payload: nextRecord as unknown as Record<string, unknown>,
+    });
   };
 
   const getSessionsByPatient = (patientId: string) => 

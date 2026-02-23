@@ -1,10 +1,12 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Calendar, Users, Activity, BookOpen, CircleHelp, LogOut, Menu, X } from 'lucide-react';
+import { Calendar, Users, Activity, BookOpen, CircleHelp, LogOut, Menu, RefreshCw, WifiOff, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { useHybridSyncStatus } from '@/hooks/useHybridSyncStatus';
 
 const navigation = [
   { name: 'Agenda', href: '/', icon: Calendar },
@@ -17,6 +19,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const syncStatus = useHybridSyncStatus();
+
+  const syncBadge = !syncStatus.enabled ? null : (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] px-2 py-0.5",
+        syncStatus.lastError
+          ? "border-destructive/30 text-destructive"
+          : syncStatus.pendingCount > 0
+            ? "border-warning/30 text-warning"
+            : "border-success/30 text-success"
+      )}
+      title={syncStatus.lastError || undefined}
+    >
+      {!syncStatus.isOnline ? 'Offline' : syncStatus.syncing ? 'Sincronizando...' : syncStatus.pendingCount > 0 ? `${syncStatus.pendingCount} pendientes` : 'Sincronizado'}
+    </Badge>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -26,7 +46,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Activity className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-foreground">BioMag</span>
+          <div className="flex flex-col">
+            <span className="font-semibold text-foreground leading-none">BioMag</span>
+            {syncStatus.enabled && (
+              <span className="text-[10px] text-muted-foreground mt-1">
+                {!syncStatus.isOnline ? 'Modo híbrido (offline)' : 'Modo híbrido'}
+              </span>
+            )}
+          </div>
         </div>
         <Button
           variant="ghost"
@@ -51,6 +78,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         mobileMenuOpen ? "translate-y-0" : "-translate-y-full"
       )}>
         <div className="p-4 space-y-1">
+          {syncStatus.enabled && (
+            <div className="flex items-center justify-between rounded-md border px-3 py-2 mb-2">
+              <div className="flex items-center gap-2">
+                {!syncStatus.isOnline ? (
+                  <WifiOff className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <RefreshCw className={cn("w-4 h-4 text-muted-foreground", syncStatus.syncing && "animate-spin")} />
+                )}
+                {syncBadge}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => void syncStatus.syncNow()}
+                disabled={syncStatus.syncing || !syncStatus.isOnline}
+              >
+                Sync
+              </Button>
+            </div>
+          )}
           {navigation.map((item) => {
             const isActive = location.pathname === item.href;
             return (
@@ -113,6 +161,41 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* User section */}
         <div className="px-4 py-4 border-t border-sidebar-border">
+          {syncStatus.enabled && (
+            <div className="px-3 pb-3">
+              <div className="rounded-lg border border-sidebar-border p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {!syncStatus.isOnline ? (
+                      <WifiOff className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <RefreshCw className={cn("w-4 h-4 text-muted-foreground", syncStatus.syncing && "animate-spin")} />
+                    )}
+                    <span className="text-xs text-muted-foreground">Sincronización</span>
+                  </div>
+                  {syncBadge}
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-muted-foreground truncate">
+                    {syncStatus.lastError
+                      ? 'Último intento con error'
+                      : syncStatus.lastSyncAt
+                        ? `Última sync: ${new Date(syncStatus.lastSyncAt).toLocaleTimeString()}`
+                        : 'Sin sincronizar aún'}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => void syncStatus.syncNow()}
+                    disabled={syncStatus.syncing || !syncStatus.isOnline}
+                  >
+                    Sync
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="text-sm font-medium text-primary">
