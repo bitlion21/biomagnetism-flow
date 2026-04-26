@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { isHybridDataMode } from '@/lib/dataRuntime';
 import { getPendingSyncCount, syncPendingMutations } from '@/lib/syncClient';
 
@@ -13,8 +14,10 @@ interface HybridSyncStatus {
 }
 
 export function useHybridSyncStatus(): HybridSyncStatus {
+  const { user } = useAuth();
+  const username = user?.username;
   const enabled = isHybridDataMode();
-  const [pendingCount, setPendingCount] = useState(() => getPendingSyncCount());
+  const [pendingCount, setPendingCount] = useState(() => getPendingSyncCount(username));
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -24,7 +27,7 @@ export function useHybridSyncStatus(): HybridSyncStatus {
   const inFlightRef = useRef(false);
 
   const refreshPendingCount = () => {
-    setPendingCount(getPendingSyncCount());
+    setPendingCount(getPendingSyncCount(username));
   };
 
   const syncNow = async () => {
@@ -38,7 +41,7 @@ export function useHybridSyncStatus(): HybridSyncStatus {
     setLastError(null);
 
     try {
-      const result = await syncPendingMutations();
+      const result = await syncPendingMutations(username);
       if (result.ok) {
         setLastSyncAt(new Date().toISOString());
       } else {
@@ -77,7 +80,7 @@ export function useHybridSyncStatus(): HybridSyncStatus {
       window.removeEventListener('offline', onOffline);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [enabled]);
+  }, [enabled, username]);
 
   return {
     enabled,

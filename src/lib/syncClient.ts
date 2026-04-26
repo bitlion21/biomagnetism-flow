@@ -12,12 +12,15 @@ interface SyncBatchResponse {
   error?: string;
 }
 
-export const syncPendingMutations = async (): Promise<SyncBatchResponse> => {
+export const syncPendingMutations = async (username?: string): Promise<SyncBatchResponse> => {
   if (!dataRuntime.syncEnabled) {
     return { ok: true, processedIds: [] };
   }
+  if (!username) {
+    return { ok: false, error: 'Missing username for sync' };
+  }
 
-  const queue = getSyncQueue();
+  const queue = getSyncQueue(username);
   if (queue.length === 0) {
     return { ok: true, processedIds: [] };
   }
@@ -29,12 +32,12 @@ export const syncPendingMutations = async (): Promise<SyncBatchResponse> => {
     const response = await fetch(`${dataRuntime.syncApiBase}/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mutations: batch }),
+      body: JSON.stringify({ username, mutations: batch }),
     });
     const payload = (await response.json()) as SyncBatchResponse;
 
     if (!response.ok || !payload.ok) {
-      incrementQueueAttempts(batchIds);
+      incrementQueueAttempts(batchIds, username);
       return {
         ok: false,
         error: payload.error || `HTTP ${response.status}`,
@@ -42,10 +45,10 @@ export const syncPendingMutations = async (): Promise<SyncBatchResponse> => {
     }
 
     const processed = new Set(payload.processedIds || []);
-    replaceSyncQueue(queue.filter((item) => !processed.has(item.id)));
+    replaceSyncQueue(queue.filter((item) => !processed.has(item.id)), username);
     return { ok: true, processedIds: [...processed] };
   } catch (error) {
-    incrementQueueAttempts(batchIds);
+    incrementQueueAttempts(batchIds, username);
     return {
       ok: false,
       error: error instanceof Error ? error.message : 'Error de sincronización',
@@ -53,7 +56,7 @@ export const syncPendingMutations = async (): Promise<SyncBatchResponse> => {
   }
 };
 
-export const getPendingSyncCount = () => getSyncQueue().length;
+export const getPendingSyncCount = (username?: string) => getSyncQueue(username).length;
 
 interface HybridBootstrapPayload {
   ok: boolean;
@@ -63,13 +66,17 @@ interface HybridBootstrapPayload {
   error?: string;
 }
 
-export const fetchHybridBootstrap = async (): Promise<HybridBootstrapPayload> => {
+export const fetchHybridBootstrap = async (username?: string): Promise<HybridBootstrapPayload> => {
   if (!dataRuntime.syncEnabled) {
     return { ok: false, error: 'Hybrid mode disabled' };
   }
+  if (!username) {
+    return { ok: false, error: 'Missing username for bootstrap' };
+  }
 
   try {
-    const response = await fetch(`${dataRuntime.syncApiBase}/bootstrap`);
+    const params = new URLSearchParams({ username });
+    const response = await fetch(`${dataRuntime.syncApiBase}/bootstrap?${params.toString()}`);
     const payload = (await response.json()) as HybridBootstrapPayload;
     if (!response.ok) return { ok: false, error: payload.error || `HTTP ${response.status}` };
     return payload;

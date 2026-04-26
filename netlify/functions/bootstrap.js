@@ -15,18 +15,30 @@ function rowDataOrFallback(row, fallback) {
   return fallback;
 }
 
+async function ensureOwnershipColumns(sql) {
+  await sql`alter table patients add column if not exists owner_username text`;
+  await sql`alter table appointments add column if not exists owner_username text`;
+  await sql`alter table sessions add column if not exists owner_username text`;
+}
+
 exports.handler = async function handler(event) {
   if (event.httpMethod !== 'GET') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }
 
   try {
+    const username = String(event.queryStringParameters?.username || '').trim().toLowerCase();
+    if (!username) {
+      return json(400, { ok: false, error: 'username is required' });
+    }
+
     const sql = getSql();
+    await ensureOwnershipColumns(sql);
 
     const [patientsRows, appointmentsRows, sessionsRows] = await Promise.all([
-      sql`select * from patients where deleted_at is null order by created_at asc`,
-      sql`select * from appointments where deleted_at is null order by date asc, time asc`,
-      sql`select * from sessions where deleted_at is null order by date desc, created_at desc`,
+      sql`select * from patients where owner_username = ${username} and deleted_at is null order by created_at asc`,
+      sql`select * from appointments where owner_username = ${username} and deleted_at is null order by date asc, time asc`,
+      sql`select * from sessions where owner_username = ${username} and deleted_at is null order by date desc, created_at desc`,
     ]);
 
     const patients = patientsRows.map((row) =>

@@ -11,9 +11,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const VALID_CREDENTIALS: Record<string, string> = {
-  test: 'bio123',
-  cristina: 'biomag2026',
   leo: '2225',
+  cristina: 'biomag2026',
+  testuser: 'biomag',
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {

@@ -5,6 +5,7 @@ import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
 import { isHybridDataMode } from '@/lib/dataRuntime';
 import { enqueueSyncMutation } from '@/lib/syncQueue';
 import { fetchHybridBootstrap, syncPendingMutations } from '@/lib/syncClient';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DataContextType {
   // Patients
@@ -63,6 +64,9 @@ const STORAGE_KEYS = {
   protocolItems: 'biomag_protocol_items',
 };
 
+const getScopedStorageKey = (key: string, username: string) =>
+  `${key}:${username.trim().toLowerCase()}`;
+
 const BUNDLED_PAIRS_FILE = '/data/pares_biomagneticos_OK_rev.05.xlsx';
 const BUNDLED_DISEASES_FILE = '/data/MedLinePlus_Enfermedades_v1.xlsx';
 
@@ -116,7 +120,7 @@ const ensureFixedAppointment = (items: Appointment[]): Appointment[] => {
 const IDB_CONFIG = {
   name: 'biomag_app',
   store: 'kv',
-  key: 'disease_conditions',
+  keyPrefix: 'disease_conditions',
 };
 
 const openDiseaseDb = (): Promise<IDBDatabase | null> => {
@@ -134,14 +138,14 @@ const openDiseaseDb = (): Promise<IDBDatabase | null> => {
   });
 };
 
-const getDiseaseConditionsFromIdb = async (): Promise<DiseaseCondition[] | null> => {
+const getDiseaseConditionsFromIdb = async (username: string): Promise<DiseaseCondition[] | null> => {
   try {
     const db = await openDiseaseDb();
     if (!db) return null;
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(IDB_CONFIG.store, 'readonly');
       const store = tx.objectStore(IDB_CONFIG.store);
-      const req = store.get(IDB_CONFIG.key);
+      const req = store.get(getScopedStorageKey(IDB_CONFIG.keyPrefix, username));
       req.onsuccess = () => resolve(req.result ?? null);
       req.onerror = () => reject(req.error);
     });
@@ -150,14 +154,14 @@ const getDiseaseConditionsFromIdb = async (): Promise<DiseaseCondition[] | null>
   }
 };
 
-const setDiseaseConditionsToIdb = async (value: DiseaseCondition[]) => {
+const setDiseaseConditionsToIdb = async (username: string, value: DiseaseCondition[]) => {
   try {
     const db = await openDiseaseDb();
     if (!db) return;
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(IDB_CONFIG.store, 'readwrite');
       const store = tx.objectStore(IDB_CONFIG.store);
-      store.put(value, IDB_CONFIG.key);
+      store.put(value, getScopedStorageKey(IDB_CONFIG.keyPrefix, username));
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -355,6 +359,8 @@ function generateId(): string {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const currentUsername = user?.username?.trim().toLowerCase();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -408,9 +414,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const rehydrateFromCloud = async (): Promise<boolean> => {
-    if (!isHybridDataMode()) return false;
+    if (!isHybridDataMode() || !currentUsername) return false;
 
-    const bootstrap = await fetchHybridBootstrap();
+    const bootstrap = await fetchHybridBootstrap(currentUsername);
     if (!bootstrap.ok) return false;
 
     if (Array.isArray(bootstrap.patients)) {
@@ -425,34 +431,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  // Load data from localStorage on mount
+  // Load user-scoped data whenever auth user changes.
   useEffect(() => {
-    const savedPatients = localStorage.getItem(STORAGE_KEYS.patients);
-    const savedAppointments = localStorage.getItem(STORAGE_KEYS.appointments);
-    const savedSessions = localStorage.getItem(STORAGE_KEYS.sessions);
-    const savedPairs = localStorage.getItem(STORAGE_KEYS.pairs);
-    const savedProtocolItems = localStorage.getItem(STORAGE_KEYS.protocolItems);
+    if (isLoading) return;
 
-    if (savedPatients) {
-      setPatients(ensureFixedPatient(JSON.parse(savedPatients)));
-    } else {
-      setPatients(ensureFixedPatient([]));
+    if (!currentUsername) {
+      setPatients([]);
+      setAppointments([]);
+      setSessions([]);
+      setBiomagneticPairs([]);
+      setDiseaseConditions([]);
+      setProtocolItems([]);
+      return;
     }
-    if (savedAppointments) {
-      setAppointments(ensureFixedAppointment(JSON.parse(savedAppointments)));
-    } else {
-      setAppointments(ensureFixedAppointment([]));
-    }
-    if (savedSessions) setSessions(JSON.parse(savedSessions));
+
+    const patientKey = getScopedStorageKey(STORAGE_KEYS.patients, currentUsername);
+    const appointmentKey = getScopedStorageKey(STORAGE_KEYS.appointments, currentUsername);
+    const sessionKey = getScopedStorageKey(STORAGE_KEYS.sessions, currentUsername);
+    const pairKey = getScopedStorageKey(STORAGE_KEYS.pairs, currentUsername);
+    const protocolKey = getScopedStorageKey(STORAGE_KEYS.protocolItems, currentUsername);
+
+    const savedPatients = localStorage.getItem(patientKey);
+    const savedAppointments = localStorage.getItem(appointmentKey);
+    const savedSessions = localStorage.getItem(sessionKey);
+    const savedPairs = localStorage.getItem(pairKey);
+    const savedProtocolItems = localStorage.getItem(protocolKey);
+
+    setPatients(savedPatients ? ensureFixedPatient(JSON.parse(savedPatients)) : ensureFixedPatient([]));
+    setAppointments(savedAppointments ? ensureFixedAppointment(JSON.parse(savedAppointments)) : ensureFixedAppointment([]));
+    setSessions(savedSessions ? JSON.parse(savedSessions) : []);
+
     if (savedPairs) {
       setBiomagneticPairs(JSON.parse(savedPairs));
     } else {
-      // Initialize with default pairs if none exist
       setBiomagneticPairs(initialBiomagneticPairs);
-      localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(initialBiomagneticPairs));
+      localStorage.setItem(pairKey, JSON.stringify(initialBiomagneticPairs));
     }
+
     if (savedProtocolItems) {
       setProtocolItems(sanitizeProtocolItems(JSON.parse(savedProtocolItems)));
+    } else {
+      setProtocolItems([]);
     }
 
     void loadBundledPairsAndProtocols({
@@ -462,7 +481,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     if (isHybridDataMode()) {
       void (async () => {
-        const bootstrap = await fetchHybridBootstrap();
+        const bootstrap = await fetchHybridBootstrap(currentUsername);
         if (!bootstrap.ok) return;
 
         if (!savedPatients && Array.isArray(bootstrap.patients)) {
@@ -476,21 +495,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })();
     }
-  }, []);
+  }, [currentUsername, isLoading]);
 
   useEffect(() => {
+    if (!currentUsername) return;
     let isMounted = true;
     const loadDiseaseConditions = async () => {
-      const fromIdb = await getDiseaseConditionsFromIdb();
+      const fromIdb = await getDiseaseConditionsFromIdb(currentUsername);
       if (fromIdb && isMounted) {
         setDiseaseConditions(fromIdb);
         return;
       }
-      const savedDiseaseConditions = localStorage.getItem(STORAGE_KEYS.diseaseConditions);
+      const savedDiseaseConditions = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.diseaseConditions, currentUsername));
       if (savedDiseaseConditions && isMounted) {
         const parsed = JSON.parse(savedDiseaseConditions);
         setDiseaseConditions(parsed);
-        setDiseaseConditionsToIdb(parsed);
+        setDiseaseConditionsToIdb(currentUsername, parsed);
         return;
       }
 
@@ -502,50 +522,56 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [currentUsername]);
 
   // Save to localStorage whenever data changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.patients, JSON.stringify(patients));
-  }, [patients]);
+    if (!currentUsername) return;
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.patients, currentUsername), JSON.stringify(patients));
+  }, [currentUsername, patients]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.appointments, JSON.stringify(appointments));
-  }, [appointments]);
+    if (!currentUsername) return;
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.appointments, currentUsername), JSON.stringify(appointments));
+  }, [appointments, currentUsername]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(sessions));
-  }, [sessions]);
+    if (!currentUsername) return;
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.sessions, currentUsername), JSON.stringify(sessions));
+  }, [currentUsername, sessions]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(biomagneticPairs));
-  }, [biomagneticPairs]);
+    if (!currentUsername) return;
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.pairs, currentUsername), JSON.stringify(biomagneticPairs));
+  }, [biomagneticPairs, currentUsername]);
 
   useEffect(() => {
-    setDiseaseConditionsToIdb(diseaseConditions);
+    if (!currentUsername) return;
+    setDiseaseConditionsToIdb(currentUsername, diseaseConditions);
     try {
-      localStorage.setItem(STORAGE_KEYS.diseaseConditions, JSON.stringify(diseaseConditions));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.diseaseConditions, currentUsername), JSON.stringify(diseaseConditions));
     } catch {
       // ignore localStorage quota errors
     }
-  }, [diseaseConditions]);
+  }, [currentUsername, diseaseConditions]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.protocolItems, JSON.stringify(protocolItems));
-  }, [protocolItems]);
+    if (!currentUsername) return;
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.protocolItems, currentUsername), JSON.stringify(protocolItems));
+  }, [currentUsername, protocolItems]);
 
   useEffect(() => {
-    if (!isHybridDataMode()) return;
+    if (!isHybridDataMode() || !currentUsername) return;
 
-    void syncPendingMutations();
+    void syncPendingMutations(currentUsername);
 
     const onOnline = () => {
-      void syncPendingMutations();
+      void syncPendingMutations(currentUsername);
     };
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        void syncPendingMutations();
+        void syncPendingMutations(currentUsername);
       }
     };
 
@@ -556,7 +582,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [currentUsername]);
 
   // Patient functions
   const addPatient = (data: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Patient => {
@@ -568,7 +594,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updatedAt: now,
     };
     setPatients(prev => [...prev, newPatient]);
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'patients',
       action: 'upsert',
       recordId: newPatient.id,
@@ -588,7 +614,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPatients(prev => prev.map(p => 
       p.id === id ? (nextRecord as Patient) : p
     ));
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'patients',
       action: 'upsert',
       recordId: id,
@@ -604,20 +630,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Also delete related appointments and sessions
     setAppointments(prev => prev.filter(a => a.patientId !== id));
     setSessions(prev => prev.filter(s => s.patientId !== id));
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'patients',
       action: 'delete',
       recordId: id,
     });
     relatedAppointmentIds.forEach((appointmentId) => {
-      enqueueSyncMutation({
+      enqueueSyncMutation(currentUsername, {
         entity: 'appointments',
         action: 'delete',
         recordId: appointmentId,
       });
     });
     relatedSessionIds.forEach((sessionId) => {
-      enqueueSyncMutation({
+      enqueueSyncMutation(currentUsername, {
         entity: 'sessions',
         action: 'delete',
         recordId: sessionId,
@@ -649,7 +675,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setAppointments(prev => [...prev, newAppointment]);
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'appointments',
       action: 'upsert',
       recordId: newAppointment.id,
@@ -668,7 +694,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setAppointments(prev => prev.map(a => 
       a.id === id ? (nextRecord as Appointment) : a
     ));
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'appointments',
       action: 'upsert',
       recordId: id,
@@ -679,7 +705,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const deleteAppointment = (id: string) => {
     if (id === FIXED_APPOINTMENT_ID) return;
     setAppointments(prev => prev.filter(a => a.id !== id));
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'appointments',
       action: 'delete',
       recordId: id,
@@ -694,7 +720,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setSessions(prev => [...prev, newSession]);
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'sessions',
       action: 'upsert',
       recordId: newSession.id,
@@ -709,7 +735,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSessions(prev => prev.map(s => 
       s.id === id ? (nextRecord as Session) : s
     ));
-    enqueueSyncMutation({
+    enqueueSyncMutation(currentUsername, {
       entity: 'sessions',
       action: 'upsert',
       recordId: id,

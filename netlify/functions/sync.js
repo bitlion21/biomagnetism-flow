@@ -30,12 +30,19 @@ async function ensureSyncLogTable(sql) {
   await sql`
     create table if not exists sync_mutation_log (
       mutation_id text primary key,
+      owner_username text not null,
       entity text not null,
       action text not null,
       record_id text not null,
       received_at timestamptz not null default now()
     )
   `;
+}
+
+async function ensureOwnershipColumns(sql) {
+  await sql`alter table patients add column if not exists owner_username text`;
+  await sql`alter table appointments add column if not exists owner_username text`;
+  await sql`alter table sessions add column if not exists owner_username text`;
 }
 
 const asIsoOrNow = (value) => {
@@ -50,7 +57,7 @@ const asDateOnly = (value, fallback = null) => {
   return String(value).slice(0, 10);
 };
 
-async function upsertPatient(sql, payload) {
+async function upsertPatient(sql, username, payload) {
   const id = String(payload.id || '');
   if (!id) throw new Error('patient.id is required');
   const phone = String(payload.phone || '').trim();
@@ -58,9 +65,10 @@ async function upsertPatient(sql, payload) {
 
   await sql`
     insert into patients (
-      id, phone, name, last_name, email, birth_date, sex, data, created_at, updated_at, deleted_at
+      id, owner_username, phone, name, last_name, email, birth_date, sex, data, created_at, updated_at, deleted_at
     ) values (
       ${id},
+      ${username},
       ${phone},
       ${payload.name ? String(payload.name) : null},
       ${payload.lastName ? String(payload.lastName) : null},
@@ -73,6 +81,7 @@ async function upsertPatient(sql, payload) {
       ${null}
     )
     on conflict (id) do update set
+      owner_username = excluded.owner_username,
       phone = excluded.phone,
       name = excluded.name,
       last_name = excluded.last_name,
@@ -86,15 +95,15 @@ async function upsertPatient(sql, payload) {
   `;
 }
 
-async function deletePatient(sql, recordId) {
+async function deletePatient(sql, username, recordId) {
   await sql`
     update patients
     set deleted_at = now(), updated_at = now()
-    where id = ${recordId}
+    where id = ${recordId} and owner_username = ${username}
   `;
 }
 
-async function upsertAppointment(sql, payload) {
+async function upsertAppointment(sql, username, payload) {
   const id = String(payload.id || '');
   if (!id) throw new Error('appointment.id is required');
   if (!payload.patientId) throw new Error('appointment.patientId is required');
@@ -103,9 +112,10 @@ async function upsertAppointment(sql, payload) {
 
   await sql`
     insert into appointments (
-      id, patient_id, date, time, duration, status, notes, data, created_at, updated_at, deleted_at
+      id, owner_username, patient_id, date, time, duration, status, notes, data, created_at, updated_at, deleted_at
     ) values (
       ${id},
+      ${username},
       ${String(payload.patientId)},
       ${asDateOnly(payload.date)},
       ${String(payload.time)},
@@ -118,6 +128,7 @@ async function upsertAppointment(sql, payload) {
       ${null}
     )
     on conflict (id) do update set
+      owner_username = excluded.owner_username,
       patient_id = excluded.patient_id,
       date = excluded.date,
       time = excluded.time,
@@ -131,15 +142,15 @@ async function upsertAppointment(sql, payload) {
   `;
 }
 
-async function deleteAppointment(sql, recordId) {
+async function deleteAppointment(sql, username, recordId) {
   await sql`
     update appointments
     set deleted_at = now(), updated_at = now()
-    where id = ${recordId}
+    where id = ${recordId} and owner_username = ${username}
   `;
 }
 
-async function upsertSession(sql, payload) {
+async function upsertSession(sql, username, payload) {
   const id = String(payload.id || '');
   if (!id) throw new Error('session.id is required');
   if (!payload.patientId) throw new Error('session.patientId is required');
@@ -147,9 +158,10 @@ async function upsertSession(sql, payload) {
 
   await sql`
     insert into sessions (
-      id, patient_id, appointment_id, date, summary, selected_pairs, clinical_checklist, free_notes, data, created_at, updated_at, deleted_at
+      id, owner_username, patient_id, appointment_id, date, summary, selected_pairs, clinical_checklist, free_notes, data, created_at, updated_at, deleted_at
     ) values (
       ${id},
+      ${username},
       ${String(payload.patientId)},
       ${payload.appointmentId ? String(payload.appointmentId) : null},
       ${asDateOnly(payload.date)},
@@ -163,6 +175,7 @@ async function upsertSession(sql, payload) {
       ${null}
     )
     on conflict (id) do update set
+      owner_username = excluded.owner_username,
       patient_id = excluded.patient_id,
       appointment_id = excluded.appointment_id,
       date = excluded.date,
@@ -177,21 +190,21 @@ async function upsertSession(sql, payload) {
   `;
 }
 
-async function deleteSession(sql, recordId) {
+async function deleteSession(sql, username, recordId) {
   await sql`
     update sessions
     set deleted_at = now(), updated_at = now()
-    where id = ${recordId}
+    where id = ${recordId} and owner_username = ${username}
   `;
 }
 
-async function applyMutation(sql, mutation) {
-  if (mutation.entity === 'patients' && mutation.action === 'upsert') return upsertPatient(sql, mutation.payload);
-  if (mutation.entity === 'patients' && mutation.action === 'delete') return deletePatient(sql, mutation.recordId);
-  if (mutation.entity === 'appointments' && mutation.action === 'upsert') return upsertAppointment(sql, mutation.payload);
-  if (mutation.entity === 'appointments' && mutation.action === 'delete') return deleteAppointment(sql, mutation.recordId);
-  if (mutation.entity === 'sessions' && mutation.action === 'upsert') return upsertSession(sql, mutation.payload);
-  if (mutation.entity === 'sessions' && mutation.action === 'delete') return deleteSession(sql, mutation.recordId);
+async function applyMutation(sql, username, mutation) {
+  if (mutation.entity === 'patients' && mutation.action === 'upsert') return upsertPatient(sql, username, mutation.payload);
+  if (mutation.entity === 'patients' && mutation.action === 'delete') return deletePatient(sql, username, mutation.recordId);
+  if (mutation.entity === 'appointments' && mutation.action === 'upsert') return upsertAppointment(sql, username, mutation.payload);
+  if (mutation.entity === 'appointments' && mutation.action === 'delete') return deleteAppointment(sql, username, mutation.recordId);
+  if (mutation.entity === 'sessions' && mutation.action === 'upsert') return upsertSession(sql, username, mutation.payload);
+  if (mutation.entity === 'sessions' && mutation.action === 'delete') return deleteSession(sql, username, mutation.recordId);
   throw new Error(`Unsupported mutation ${mutation.entity}/${mutation.action}`);
 }
 
@@ -202,18 +215,21 @@ exports.handler = async function handler(event) {
 
   try {
     const body = JSON.parse(event.body || '{}');
+    const username = String(body.username || '').trim().toLowerCase();
+    if (!username) return json(400, { ok: false, error: 'username is required' });
     const mutations = body.mutations || [];
     const validation = validateMutations(mutations);
     if (!validation.ok) return json(400, validation);
 
     const sql = getSql();
+    await ensureOwnershipColumns(sql);
     await ensureSyncLogTable(sql);
 
     const processedIds = [];
     for (const mutation of mutations) {
       const inserted = await sql`
-        insert into sync_mutation_log (mutation_id, entity, action, record_id)
-        values (${mutation.id}, ${mutation.entity}, ${mutation.action}, ${mutation.recordId})
+        insert into sync_mutation_log (mutation_id, owner_username, entity, action, record_id)
+        values (${mutation.id}, ${username}, ${mutation.entity}, ${mutation.action}, ${mutation.recordId})
         on conflict (mutation_id) do nothing
         returning mutation_id
       `;
@@ -224,7 +240,7 @@ exports.handler = async function handler(event) {
         continue;
       }
 
-      await applyMutation(sql, mutation);
+      await applyMutation(sql, username, mutation);
       processedIds.push(mutation.id);
     }
 

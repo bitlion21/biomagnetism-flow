@@ -3,6 +3,7 @@
 
 create table if not exists patients (
   id text primary key,
+  owner_username text not null,
   phone text not null,
   name text,
   last_name text,
@@ -15,8 +16,11 @@ create table if not exists patients (
   deleted_at timestamptz
 );
 
+alter table patients add column if not exists owner_username text;
+
 create table if not exists appointments (
   id text primary key,
+  owner_username text not null,
   patient_id text not null references patients(id),
   date date not null,
   time text not null,
@@ -29,8 +33,11 @@ create table if not exists appointments (
   deleted_at timestamptz
 );
 
+alter table appointments add column if not exists owner_username text;
+
 create table if not exists sessions (
   id text primary key,
+  owner_username text not null,
   patient_id text not null references patients(id),
   appointment_id text,
   date date not null,
@@ -44,10 +51,19 @@ create table if not exists sessions (
   deleted_at timestamptz
 );
 
+alter table sessions add column if not exists owner_username text;
+
 create table if not exists sync_mutation_log (
   mutation_id text primary key,
+  owner_username text not null,
   entity text not null,
   action text not null,
   record_id text not null,
   received_at timestamptz not null default now()
 );
+
+alter table sync_mutation_log add column if not exists owner_username text;
+
+create index if not exists patients_owner_username_idx on patients(owner_username);
+create index if not exists appointments_owner_username_idx on appointments(owner_username);
+create index if not exists sessions_owner_username_idx on sessions(owner_username);
