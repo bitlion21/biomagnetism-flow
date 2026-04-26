@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Calendar, Users, Activity, BookOpen, CircleHelp, LogOut, Menu, RefreshCw, WifiOff, X } from 'lucide-react';
+import { Calendar, Users, Activity, BookOpen, CircleHelp, LogOut, Menu, RefreshCw, WifiOff, X, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useHybridSyncStatus } from '@/hooks/useHybridSyncStatus';
 
-const navigation = [
+const baseNavigation = [
   { name: 'Agenda', href: '/', icon: Calendar },
   { name: 'Pacientes', href: '/patients', icon: Users },
   { name: 'Base de Conocimiento', href: '/knowledge', icon: BookOpen },
@@ -23,6 +23,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [rehydrating, setRehydrating] = useState(false);
   const syncStatus = useHybridSyncStatus();
+  const navigation = user?.role === 'admin'
+    ? [...baseNavigation, { name: 'Usuarios', href: '/admin/users', icon: Shield }]
+    : baseNavigation;
 
   const syncBadge = !syncStatus.enabled ? null : (
     <Badge
@@ -139,7 +142,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             );
           })}
           <button
-            onClick={logout}
+            onClick={() => void logout()}
             className="nav-item w-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
           >
             <LogOut className="w-5 h-5" />
@@ -239,12 +242,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <p className="text-sm font-medium text-sidebar-foreground truncate">
                 {user?.username}
               </p>
-              <p className="text-xs text-muted-foreground">Terapeuta</p>
+              <p className="text-xs text-muted-foreground">{user?.role === 'admin' ? 'Administrador' : 'Terapeuta'}</p>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              onClick={logout}
+              onClick={() => void logout()}
               className="text-muted-foreground hover:text-destructive"
             >
               <LogOut className="w-4 h-4" />

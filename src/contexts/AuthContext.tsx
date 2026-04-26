@@ -1,67 +1,131 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '@/types';
+import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { AuthAccount, User, UserStatus } from '@/types';
+import {
+  deleteAccountRequest,
+  fetchAccountsRequest,
+  fetchSessionRequest,
+  loginRequest,
+  logoutRequest,
+  registerRequest,
+  updateAccountStatusRequest,
+} from '@/lib/authClient';
+
+interface AuthActionResult {
+  ok: boolean;
+  error?: string;
+}
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => boolean;
-  logout: () => void;
+  login: (username: string, password: string) => Promise<AuthActionResult>;
+  register: (payload: { username: string; password: string }) => Promise<AuthActionResult>;
+  logout: () => Promise<void>;
   isLoading: boolean;
+  accounts: AuthAccount[];
+  refreshAccounts: () => Promise<void>;
+  approveAccount: (accountId: string) => Promise<AuthActionResult>;
+  disableAccount: (accountId: string) => Promise<AuthActionResult>;
+  rejectAccount: (accountId: string) => Promise<AuthActionResult>;
+  restoreAccount: (accountId: string) => Promise<AuthActionResult>;
+  deleteAccount: (accountId: string) => Promise<AuthActionResult>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const VALID_CREDENTIALS: Record<string, string> = {
-  leo: '2225',
-  cristina: 'biomag2026',
-  testuser: 'biomag',
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [accounts, setAccounts] = useState<AuthAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem('biomag_user');
-    if (savedUser) {
-      try {
-        const parsedUser = JSON.parse(savedUser) as User;
-        const savedUsername = parsedUser?.username?.trim().toLowerCase();
-        if (savedUsername && savedUsername in VALID_CREDENTIALS) {
-          setUser({ ...parsedUser, username: savedUsername, isAuthenticated: true });
-        } else {
-          localStorage.removeItem('biomag_user');
-        }
-      } catch {
-        localStorage.removeItem('biomag_user');
-      }
+  const refreshAccounts = async () => {
+    if (user?.role !== 'admin') {
+      setAccounts([]);
+      return;
     }
-    setIsLoading(false);
+
+    const result = await fetchAccountsRequest();
+    if (result.ok && result.data) {
+      setAccounts(result.data);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      const result = await fetchSessionRequest();
+      if (!mounted) return;
+
+      if (result.ok) {
+        setUser(result.data || null);
+      }
+      setIsLoading(false);
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const login = (username: string, password: string): boolean => {
-    const normalizedUsername = username.trim().toLowerCase();
-    const expectedPassword = VALID_CREDENTIALS[normalizedUsername];
-
-    if (expectedPassword && password === expectedPassword) {
-      const newUser: User = { username: normalizedUsername, isAuthenticated: true };
-      setUser(newUser);
-      localStorage.setItem('biomag_user', JSON.stringify(newUser));
-      return true;
+  useEffect(() => {
+    if (!isLoading) {
+      void refreshAccounts();
     }
-    return false;
+  }, [user?.id, user?.role, isLoading]);
+
+  const mutateAccountStatus = async (accountId: string, status: UserStatus): Promise<AuthActionResult> => {
+    const result = await updateAccountStatusRequest(accountId, status);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+
+    await refreshAccounts();
+    if (user?.id === accountId) {
+      const session = await fetchSessionRequest();
+      if (session.ok) {
+        setUser(session.data || null);
+      }
+    }
+
+    return { ok: true };
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('biomag_user');
-  };
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    accounts,
+    isLoading,
+    refreshAccounts,
+    login: async (username, password) => {
+      const result = await loginRequest(username, password);
+      if (!result.ok || !result.data) {
+        return { ok: false, error: result.error };
+      }
+      setUser(result.data);
+      return { ok: true };
+    },
+    register: async ({ username, password }) => {
+      const result = await registerRequest(username, password);
+      return result.ok ? { ok: true } : { ok: false, error: result.error };
+    },
+    logout: async () => {
+      await logoutRequest();
+      setUser(null);
+      setAccounts([]);
+    },
+    approveAccount: async (accountId) => mutateAccountStatus(accountId, 'approved'),
+    disableAccount: async (accountId) => mutateAccountStatus(accountId, 'disabled'),
+    rejectAccount: async (accountId) => mutateAccountStatus(accountId, 'rejected'),
+    restoreAccount: async (accountId) => mutateAccountStatus(accountId, 'pending'),
+    deleteAccount: async (accountId) => {
+      const result = await deleteAccountRequest(accountId);
+      if (!result.ok) {
+        return { ok: false, error: result.error };
+      }
+      await refreshAccounts();
+      return { ok: true };
+    },
+  }), [accounts, isLoading, user]);
 
-  return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

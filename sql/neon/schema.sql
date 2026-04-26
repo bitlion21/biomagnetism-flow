@@ -67,3 +67,23 @@ alter table sync_mutation_log add column if not exists owner_username text;
 create index if not exists patients_owner_username_idx on patients(owner_username);
 create index if not exists appointments_owner_username_idx on appointments(owner_username);
 create index if not exists sessions_owner_username_idx on sessions(owner_username);
+
+create table if not exists auth_users (
+  id text primary key,
+  username text not null unique,
+  password_hash text not null,
+  role text not null check (role in ('admin', 'therapist')),
+  status text not null check (status in ('pending', 'approved', 'disabled', 'rejected')),
+  created_at timestamptz not null default now(),
+  approved_at timestamptz
+);
+
+create table if not exists auth_sessions (
+  id text primary key,
+  user_id text not null references auth_users(id) on delete cascade,
+  token_hash text not null unique,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create index if not exists auth_sessions_user_id_idx on auth_sessions(user_id);

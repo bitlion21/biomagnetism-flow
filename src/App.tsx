@@ -15,6 +15,7 @@ import { KnowledgePage } from "@/pages/Knowledge";
 import { KnowledgeImagesPage } from "@/pages/KnowledgeImages";
 import { DiseaseDetailPage } from "@/pages/DiseaseDetail";
 import { HelpPage } from "@/pages/Help";
+import { AdminUsersPage } from "@/pages/AdminUsers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,28 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
   
   return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse-soft text-primary">Cargando...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <AppLayout>{children}</AppLayout>;
 }
 
 function AppRoutes() {
@@ -105,6 +128,11 @@ function AppRoutes() {
         <ProtectedRoute>
           <HelpPage />
         </ProtectedRoute>
+      } />
+      <Route path="/admin/users" element={
+        <AdminRoute>
+          <AdminUsersPage />
+        </AdminRoute>
       } />
       
       {/* Catch all */}

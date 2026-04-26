@@ -91,9 +91,24 @@ export interface ProtocolItem {
   protocolCategory?: string; // 4ta columna
 }
 
-// User type for simple auth
-export interface User {
+export type UserRole = 'admin' | 'therapist';
+export type UserStatus = 'pending' | 'approved' | 'disabled' | 'rejected';
+
+export interface AuthAccount {
+  id: string;
   username: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+  approvedAt?: string;
+}
+
+// User type for auth session
+export interface User {
+  id: string;
+  username: string;
+  role: UserRole;
+  status: UserStatus;
   isAuthenticated: boolean;
 }
 
