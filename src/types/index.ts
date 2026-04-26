@@ -53,6 +53,7 @@ export interface SelectedPair {
   point1: string;
   point2: string;
   notes?: string;
+  source?: 'manual' | 'protocol';
 }
 
 export interface ClinicalChecklistItem {

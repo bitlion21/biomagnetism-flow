@@ -327,8 +327,8 @@ export function KnowledgePage() {
               </Link>
             </Button>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            <Button variant="outline" className="w-full sm:w-auto" asChild>
               <Link to="/knowledge/images">
                 <ImageIcon className="w-4 h-4 mr-2" />
                 Imágenes
@@ -336,7 +336,7 @@ export function KnowledgePage() {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" className="text-destructive hover:text-destructive" disabled={biomagneticPairs.length === 0}>
+                <Button variant="outline" className="w-full text-destructive hover:text-destructive sm:w-auto" disabled={biomagneticPairs.length === 0}>
                   <Trash2 className="w-4 h-4 mr-2" />
                   Borrar
                 </Button>
@@ -366,15 +366,15 @@ export function KnowledgePage() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            <Button variant="outline" onClick={handleExport} disabled={biomagneticPairs.length === 0}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={handleExport} disabled={biomagneticPairs.length === 0}>
               <Download className="w-4 h-4 mr-2" />
               Exportar
             </Button>
-            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setImportDialogOpen(true)}>
               <Upload className="w-4 h-4 mr-2" />
               Importar
             </Button>
-            <Button onClick={() => handleOpenDialog()}>
+            <Button className="w-full sm:w-auto" onClick={() => handleOpenDialog()}>
               <Plus className="w-4 h-4 mr-2" />
               Nuevo Par
             </Button>
@@ -382,10 +382,10 @@ export function KnowledgePage() {
         </div>
 
         <Tabs defaultValue="pairs" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="pairs">Lista de pares</TabsTrigger>
-            <TabsTrigger value="protocols">Protocolos</TabsTrigger>
-            <TabsTrigger value="diseases">Enfermedades y afecciones</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-1 gap-1 sm:grid-cols-3">
+            <TabsTrigger className="w-full" value="pairs">Lista de pares</TabsTrigger>
+            <TabsTrigger className="w-full" value="protocols">Protocolos</TabsTrigger>
+            <TabsTrigger className="w-full" value="diseases">Enfermedades y afecciones</TabsTrigger>
           </TabsList>
 
           <TabsContent value="pairs" className="space-y-4">
@@ -479,8 +479,102 @@ export function KnowledgePage() {
               </Card>
             ) : (
               <Card>
-                <div className="overflow-x-auto">
-                  <Table>
+                <div className="space-y-1.5 p-2 md:hidden">
+                  {filteredPairs.map((pair) => (
+                    <div key={pair.id} className="rounded-lg border px-2.5 py-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Badge variant="outline" className="font-mono px-1.5 py-0 text-[11px]">
+                          {pair.pairCode}
+                        </Badge>
+                        <span className="min-w-0 flex-1 truncate font-medium">{pair.point1}</span>
+                        <span className="shrink-0 text-muted-foreground">↔</span>
+                        <span className="min-w-0 flex-1 truncate font-medium text-right">{pair.point2}</span>
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
+                          <span className="truncate">{pair.pathogen || '-'}</span>
+                          {pair.type && (
+                            <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[10px]">
+                              {pair.type}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setImageDialogPair(pair);
+                                  setImageDialogOpen(true);
+                                }}
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              >
+                                <ImageIcon className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Ver imagen</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleShowInfo(pair, 'symptoms')}
+                                className="h-7 w-7 text-primary hover:text-primary"
+                              >
+                                <Stethoscope className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Sintomatología</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleShowInfo(pair, 'recommendations')}
+                                className="h-7 w-7 text-primary hover:text-primary"
+                              >
+                                <Lightbulb className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Recomendaciones</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenDialog(pair)}
+                                className="h-7 w-7"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Editar</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(pair)}
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Eliminar</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
+                  <Table className="min-w-[860px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-24">Código</TableHead>
@@ -490,7 +584,7 @@ export function KnowledgePage() {
                         <TableHead className="hidden lg:table-cell">Relación</TableHead>
                         <TableHead>Patógeno</TableHead>
                         <TableHead>Tipo</TableHead>
-                        <TableHead className="w-32"></TableHead>
+                        <TableHead className="w-[180px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -516,46 +610,46 @@ export function KnowledgePage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  setImageDialogPair(pair);
-                                  setImageDialogOpen(true);
-                                }}
-                                className="text-muted-foreground hover:text-foreground"
-                              >
-                                <ImageIcon className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Ver imagen</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleShowInfo(pair, 'symptoms')}
-                                className="text-primary hover:text-primary"
-                              >
-                                <Stethoscope className="w-4 h-4" />
-                              </Button>
+                            <div className="flex items-center gap-1 whitespace-nowrap">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setImageDialogPair(pair);
+                                      setImageDialogOpen(true);
+                                    }}
+                                    className="text-muted-foreground hover:text-foreground"
+                                  >
+                                    <ImageIcon className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Ver imagen</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleShowInfo(pair, 'symptoms')}
+                                    className="text-primary hover:text-primary"
+                                  >
+                                    <Stethoscope className="w-4 h-4" />
+                                  </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Sintomatología</TooltipContent>
                               </Tooltip>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleShowInfo(pair, 'recommendations')}
-                                className="text-primary hover:text-primary"
-                              >
-                                <Lightbulb className="w-4 h-4" />
-                              </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleShowInfo(pair, 'recommendations')}
+                                    className="text-primary hover:text-primary"
+                                  >
+                                    <Lightbulb className="w-4 h-4" />
+                                  </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Recomendaciones</TooltipContent>
                               </Tooltip>

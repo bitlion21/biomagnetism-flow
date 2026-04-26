@@ -16,6 +16,8 @@ import {
   X,
   Pencil,
   Image as ImageIcon,
+  Stethoscope,
+  Lightbulb,
 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { defaultClinicalChecklist } from '@/data/clinicalChecklist';
@@ -45,9 +47,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { PairInfoDialog } from '@/components/knowledge/PairInfoDialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from 'sonner';
-import { SelectedPair, ClinicalChecklistItem, BiomagneticPair } from '@/types';
+import { SelectedPair, ClinicalChecklistItem, BiomagneticPair, ProtocolItem } from '@/types';
 import { cn } from '@/lib/utils';
+import { getPairImageLabel, getPairNumber } from '@/lib/pairImage';
+
+type PairTimerState = {
+  baseSeconds: number;
+  remainingSeconds: number;
+  isRunning: boolean;
+  endsAt?: number;
+};
 
 export function SessionPage() {
   const { patientId } = useParams<{ patientId: string }>();
@@ -59,6 +84,8 @@ export function SessionPage() {
     getPatientById,
     getUniquePointValues,
     getPairsByPoint,
+    biomagneticPairs,
+    protocolItems,
     sessions,
     addSession,
     updateSession,
@@ -76,7 +103,7 @@ export function SessionPage() {
   const [pointOpen, setPointOpen] = useState(false);
   const [availablePairs, setAvailablePairs] = useState<{ pair: BiomagneticPair; isPoint1: boolean }[]>([]);
   const [selectedPairs, setSelectedPairs] = useState<SelectedPair[]>([]);
-  const [pairTimers, setPairTimers] = useState<Record<string, { baseSeconds: number; remainingSeconds: number; isRunning: boolean }>>({});
+  const [pairTimers, setPairTimers] = useState<Record<string, PairTimerState>>({});
   const [editingPairTimer, setEditingPairTimer] = useState<string | null>(null);
   const [editingTimerValue, setEditingTimerValue] = useState<string>('');
   const [checklist, setChecklist] = useState<ClinicalChecklistItem[]>(
@@ -85,10 +112,28 @@ export function SessionPage() {
   const [freeNotes, setFreeNotes] = useState('');
   const [summary, setSummary] = useState('');
   const [currentPairResult, setCurrentPairResult] = useState<BiomagneticPair | null>(null);
+  const [protocolsVisible, setProtocolsVisible] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
-  const [imageDialogPairCode, setImageDialogPairCode] = useState<string | null>(null);
+  const [imageDialogPair, setImageDialogPair] = useState<SelectedPair | null>(null);
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false);
+  const [infoDialogType, setInfoDialogType] = useState<'symptoms' | 'recommendations'>('symptoms');
+  const [infoDialogPair, setInfoDialogPair] = useState<BiomagneticPair | null>(null);
 
   const DEFAULT_TIMER_SECONDS = 12 * 60;
+
+  const getPairTimerState = (overrides?: Partial<PairTimerState>): PairTimerState => ({
+    baseSeconds: DEFAULT_TIMER_SECONDS,
+    remainingSeconds: DEFAULT_TIMER_SECONDS,
+    isRunning: false,
+    ...overrides,
+  });
+
+  const getRemainingSeconds = (timer: PairTimerState, now = Date.now()) => {
+    if (!timer.isRunning || !timer.endsAt) {
+      return timer.remainingSeconds;
+    }
+    return Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
+  };
 
   useEffect(() => {
     if (!existingSession) return;
@@ -102,13 +147,9 @@ export function SessionPage() {
     setFreeNotes(existingSession.freeNotes || '');
     setSummary(existingSession.summary || '');
     setPairTimers(
-      (existingSession.selectedPairs || []).reduce<Record<string, { baseSeconds: number; remainingSeconds: number; isRunning: boolean }>>(
+      (existingSession.selectedPairs || []).reduce<Record<string, PairTimerState>>(
         (acc, pair) => {
-          acc[pair.pairCode] = {
-            baseSeconds: DEFAULT_TIMER_SECONDS,
-            remainingSeconds: DEFAULT_TIMER_SECONDS,
-            isRunning: false,
-          };
+          acc[pair.pairCode] = getPairTimerState();
           return acc;
         },
         {}
@@ -118,6 +159,7 @@ export function SessionPage() {
 
   useEffect(() => {
     const intervalId = setInterval(() => {
+      const now = Date.now();
       setPairTimers(prev => {
         let updated = false;
         const next: typeof prev = {};
@@ -126,13 +168,19 @@ export function SessionPage() {
             next[pairCode] = timer;
             continue;
           }
-          const remaining = Math.max(0, timer.remainingSeconds - 1);
+          const remaining = getRemainingSeconds(timer, now);
           next[pairCode] = {
             ...timer,
             remainingSeconds: remaining,
-            isRunning: remaining > 0 ? timer.isRunning : false,
+            isRunning: remaining > 0,
+            endsAt: remaining > 0 ? timer.endsAt : undefined,
           };
-          updated = true;
+          if (
+            remaining !== timer.remainingSeconds ||
+            (remaining === 0 && timer.isRunning)
+          ) {
+            updated = true;
+          }
         }
         return updated ? next : prev;
       });
@@ -158,25 +206,30 @@ export function SessionPage() {
     setCurrentPairResult(pair);
   };
 
-  // Add pair to session
-  const addPairToSession = (pair: BiomagneticPair) => {
+  const addPairToSession = (
+    pair: BiomagneticPair,
+    options?: { source?: SelectedPair['source']; resetSelectors?: boolean }
+  ) => {
     if (selectedPairs.some(sp => sp.pairCode === pair.pairCode)) {
       toast.info('Este par ya está agregado');
       return;
     }
+    const source = options?.source || 'manual';
     setSelectedPairs(prev => [...prev, {
       pairCode: pair.pairCode,
       point1: pair.point1,
       point2: pair.point2,
+      source,
     }]);
     setPairTimers(prev => ({
       ...prev,
-      [pair.pairCode]: prev[pair.pairCode] || {
-        baseSeconds: DEFAULT_TIMER_SECONDS,
-        remainingSeconds: DEFAULT_TIMER_SECONDS,
-        isRunning: false,
-      },
+      [pair.pairCode]: prev[pair.pairCode] || getPairTimerState(),
     }));
+    if (options?.resetSelectors ?? true) {
+      setSelectedPoint('');
+      setAvailablePairs([]);
+      setCurrentPairResult(null);
+    }
     toast.success(`Par ${pair.pairCode} agregado`);
   };
 
@@ -282,7 +335,7 @@ export function SessionPage() {
     setEditingTimerValue('');
   };
 
-  const commitEditingTimer = (pairCode: string, timer: { baseSeconds: number; remainingSeconds: number; isRunning: boolean }) => {
+  const commitEditingTimer = (pairCode: string) => {
     const seconds = parseTimerInput(editingTimerValue);
     if (seconds === null) {
       toast.error('Formato inválido. Usa mm o mm:ss');
@@ -294,19 +347,48 @@ export function SessionPage() {
         baseSeconds: seconds,
         remainingSeconds: seconds,
         isRunning: false,
+        endsAt: undefined,
       },
     }));
     cancelEditingTimer();
   };
 
   const getPairImagePath = (pairCode: string) => {
-    const match = pairCode.match(/\d+/);
-    const number = match ? match[0] : pairCode;
-    return `/images/pares/${number}.png`;
+    return `/images/pares/${getPairNumber(pairCode)}.png`;
+  };
+
+  const getKnowledgePair = (selectedPair: SelectedPair) =>
+    biomagneticPairs.find(pair => pair.pairCode === selectedPair.pairCode);
+
+  const getProtocolNumber = (item: ProtocolItem) =>
+    String(item.columns[0] || '')
+      .trim()
+      .match(/\d+/)?.[0] || '';
+
+  const resolveProtocolPair = (item: ProtocolItem) => {
+    const protocolNumber = getProtocolNumber(item);
+    if (!protocolNumber) return undefined;
+
+    return biomagneticPairs.find((pair) => {
+      const pairNumber = getPairNumber(pair.pairCode);
+      return pairNumber === protocolNumber || pair.pairCode.trim().toLowerCase() === protocolNumber.toLowerCase();
+    });
+  };
+
+  const handleShowInfo = (selectedPair: SelectedPair, type: 'symptoms' | 'recommendations') => {
+    const pair = getKnowledgePair(selectedPair);
+    if (!pair) {
+      toast.error('No se encontró este par en la base de conocimiento');
+      return;
+    }
+    setInfoDialogPair(pair);
+    setInfoDialogType(type);
+    setInfoDialogOpen(true);
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+    <TooltipProvider>
+      <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -359,6 +441,24 @@ export function SessionPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left column - Pair selection */}
         <div className="space-y-4">
+          {/* Point selection */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center justify-between gap-3">
+                <span>0. Protocolos</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setProtocolsVisible(prev => !prev);
+                  }}
+                >
+                  {protocolsVisible ? 'Ocultar' : 'Ver'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+          </Card>
+
           {/* Point selection */}
           <Card>
             <CardHeader>
@@ -500,6 +600,72 @@ export function SessionPage() {
               </CardContent>
             </Card>
           )}
+
+          {protocolsVisible && (
+            <Card className="animate-fade-up">
+              <CardHeader>
+                <CardTitle className="text-base">Pares por Protocolos</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {protocolItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No hay protocolos cargados
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Número</TableHead>
+                            <TableHead>Par</TableHead>
+                            <TableHead>Grupo</TableHead>
+                            <TableHead>Tipo</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {protocolItems.map((item) => {
+                            const pair = resolveProtocolPair(item);
+                            return (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-medium">{item.columns[0] || '-'}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span>{item.columns[1] || '-'}</span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="shrink-0"
+                                      onClick={() => pair && addPairToSession(pair, { source: 'protocol', resetSelectors: false })}
+                                      disabled={!pair}
+                                    >
+                                      <Plus className="w-4 h-4 mr-2" />
+                                      Agregar
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{item.group || '-'}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    {item.protocolCategory ? (
+                                      <Badge variant="secondary">{item.protocolCategory}</Badge>
+                                    ) : '-'}
+                                    {!pair && (
+                                      <Badge variant="outline">Sin par vinculado</Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right column - Session details */}
@@ -522,35 +688,69 @@ export function SessionPage() {
               ) : (
                 <div className="space-y-2">
                   {selectedPairs.map((pair) => {
-                    const timer = pairTimers[pair.pairCode] || {
-                      baseSeconds: DEFAULT_TIMER_SECONDS,
-                      remainingSeconds: DEFAULT_TIMER_SECONDS,
-                      isRunning: false,
-                    };
+                    const timer = pairTimers[pair.pairCode] || getPairTimerState();
                     return (
                       <div
                         key={pair.pairCode}
                         className={cn(
                           "flex items-center justify-between p-3 bg-success/5 border border-success/20 rounded-lg",
+                          timer.isRunning && "border-4 border-success/50",
+                          timer.remainingSeconds === 0 && "border-4 border-warning",
                           timer.remainingSeconds === 0 && "border-l-8 border-l-success"
                         )}
                       >
                         <div className="flex items-center gap-3">
-                          <CheckCircle2 className="w-5 h-5 text-success" />
+                          <CheckCircle2
+                            className={cn(
+                              "w-5 h-5 shrink-0",
+                              pair.source === 'protocol' ? "text-foreground" : "text-success"
+                            )}
+                          />
                           <div>
                             <div className="flex items-center gap-2">
                               <p className="font-medium text-sm">{pair.pairCode}</p>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                onClick={() => {
-                                  setImageDialogPairCode(pair.pairCode);
-                                  setImageDialogOpen(true);
-                                }}
-                              >
-                                <ImageIcon className="w-3.5 h-3.5" />
-                              </Button>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-primary hover:text-primary"
+                                    onClick={() => handleShowInfo(pair, 'symptoms')}
+                                  >
+                                    <Stethoscope className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Sintomatología</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-primary hover:text-primary"
+                                    onClick={() => handleShowInfo(pair, 'recommendations')}
+                                  >
+                                    <Lightbulb className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Recomendaciones</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                      setImageDialogPair(pair);
+                                      setImageDialogOpen(true);
+                                    }}
+                                  >
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Ver imagen</TooltipContent>
+                              </Tooltip>
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {pair.point1} ↔ {pair.point2}
@@ -567,7 +767,7 @@ export function SessionPage() {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
-                                  commitEditingTimer(pair.pairCode, timer);
+                                  commitEditingTimer(pair.pairCode);
                                 }
                                 if (e.key === 'Escape') {
                                   e.preventDefault();
@@ -598,17 +798,22 @@ export function SessionPage() {
                                       baseSeconds: seconds,
                                       remainingSeconds: seconds,
                                       isRunning: true,
+                                      endsAt: Date.now() + (seconds * 1000),
                                     },
                                   }));
                                   cancelEditingTimer();
                                   return;
                                 }
+                                const remainingSeconds = timer.remainingSeconds === 0
+                                  ? timer.baseSeconds
+                                  : getRemainingSeconds(timer);
                                 setPairTimers(prev => ({
                                   ...prev,
                                   [pair.pairCode]: {
                                     ...timer,
-                                    remainingSeconds: timer.remainingSeconds === 0 ? timer.baseSeconds : timer.remainingSeconds,
+                                    remainingSeconds,
                                     isRunning: true,
+                                    endsAt: Date.now() + (remainingSeconds * 1000),
                                   },
                                 }));
                               }}
@@ -626,6 +831,7 @@ export function SessionPage() {
                                     ...timer,
                                     remainingSeconds: timer.baseSeconds,
                                     isRunning: false,
+                                    endsAt: undefined,
                                   },
                                 }));
                               }}
@@ -641,7 +847,7 @@ export function SessionPage() {
                               )}
                               onClick={() => {
                                 if (editingPairTimer === pair.pairCode) {
-                                  commitEditingTimer(pair.pairCode, timer);
+                                  commitEditingTimer(pair.pairCode);
                                   return;
                                 }
                                 startEditingTimer(pair.pairCode, timer.baseSeconds);
@@ -724,22 +930,39 @@ export function SessionPage() {
           </Card>
         </div>
       </div>
-      <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Imagen del par {imageDialogPairCode}</DialogTitle>
-          </DialogHeader>
-          {imageDialogPairCode && (
-            <div className="w-full overflow-hidden rounded-lg border bg-muted/10">
-              <img
-                src={getPairImagePath(imageDialogPairCode)}
-                alt={`Imagen del par ${imageDialogPairCode}`}
-                className="w-full h-auto object-contain"
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+        {infoDialogPair && (
+          <PairInfoDialog
+            open={infoDialogOpen}
+            onClose={() => setInfoDialogOpen(false)}
+            pairCode={infoDialogPair.pairCode}
+            type={infoDialogType}
+            content={infoDialogType === 'symptoms'
+              ? (infoDialogPair.symptoms || '')
+              : (infoDialogPair.recommendations || '')
+            }
+          />
+        )}
+        <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>
+                {imageDialogPair
+                  ? getPairImageLabel(imageDialogPair.pairCode, imageDialogPair.point1, imageDialogPair.point2)
+                  : 'Imagen del par'}
+              </DialogTitle>
+            </DialogHeader>
+            {imageDialogPair && (
+              <div className="w-full overflow-hidden rounded-lg border bg-muted/10">
+                <img
+                  src={getPairImagePath(imageDialogPair.pairCode)}
+                  alt={getPairImageLabel(imageDialogPair.pairCode, imageDialogPair.point1, imageDialogPair.point2)}
+                  className="w-full h-auto object-contain"
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }

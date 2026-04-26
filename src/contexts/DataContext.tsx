@@ -177,6 +177,23 @@ const normalizeText = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
 
+const isProtocolHeaderRow = (columns: string[]) => {
+  const first = normalizeText(columns[0]);
+  const second = normalizeText(columns[1]);
+  const third = normalizeText(columns[2]);
+  const fourth = normalizeText(columns[3]);
+
+  return (
+    (first === 'numero' || first === 'número' || first === 'codigo' || first === 'código') &&
+    (second === 'par' || second === 'enfermedad' || second === 'par/enfermedad') &&
+    (third === 'grupo' || third === 'group') &&
+    (fourth === 'protocolo' || fourth === 'tipo' || fourth === 'categoria' || fourth === 'clase')
+  );
+};
+
+const sanitizeProtocolItems = (items: ProtocolItem[]) =>
+  items.filter((item) => !isProtocolHeaderRow(item.columns ?? []));
+
 const PAIR_COLUMN_MAPPINGS: Record<string, keyof Omit<BiomagneticPair, 'id'>> = {
   codigo: 'pairCode',
   'código': 'pairCode',
@@ -253,11 +270,7 @@ const parseProtocolsFromWorkbook = (workbook: XLSX.WorkBook): Array<Omit<Protoco
     .map((row) => (Array.isArray(row) ? row : []))
     .map((row) => row.map((cell) => String(cell ?? '').replace(/\s+/g, ' ').trim()))
     .filter((columns) => columns.some(Boolean))
-    .filter((columns) => {
-      const third = normalizeText(columns[2]);
-      const fourth = normalizeText(columns[3]);
-      return !(third === 'grupo' && (fourth === 'protocolo' || fourth === 'tipo' || fourth === 'categoria'));
-    })
+    .filter((columns) => !isProtocolHeaderRow(columns))
     .map((columns) => ({
       columns,
       group: columns[2] || '',
@@ -439,7 +452,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEYS.pairs, JSON.stringify(initialBiomagneticPairs));
     }
     if (savedProtocolItems) {
-      setProtocolItems(JSON.parse(savedProtocolItems));
+      setProtocolItems(sanitizeProtocolItems(JSON.parse(savedProtocolItems)));
     }
 
     void loadBundledPairsAndProtocols({
@@ -753,7 +766,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const replaceProtocolItems = (items: ProtocolItem[]) => {
-    setProtocolItems(items);
+    setProtocolItems(sanitizeProtocolItems(items));
   };
 
   return (
