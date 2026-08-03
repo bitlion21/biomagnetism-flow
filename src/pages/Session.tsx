@@ -329,6 +329,16 @@ export function SessionPage() {
   const isHistoricalPairImported = (pair: SelectedPair) =>
     selectedPairs.some((item) => item.kind !== 'timer' && item.pairCode === pair.pairCode);
 
+  const importReservoirPair = (pair: BiomagneticPair) => {
+    if (selectedPairs.some((item) => item.kind !== 'timer' && item.pairCode === pair.pairCode)) {
+      return;
+    }
+    addPairToSession(pair, { resetSelectors: false });
+  };
+
+  const isReservoirPairImported = (pair: BiomagneticPair) =>
+    selectedPairs.some((item) => item.kind !== 'timer' && item.pairCode === pair.pairCode);
+
   const importPreviousSessionPairs = () => {
     if (!latestPreviousSession) {
       toast.info('No hay una sesión anterior para importar');
@@ -1477,72 +1487,88 @@ export function SessionPage() {
                   <p className="text-sm text-muted-foreground">No hay pares reservorio para este filtro.</p>
                 ) : (
                   <div className="space-y-2">
-                    {filteredReservoirPairs.map((pair) => (
-                      <div
-                        key={pair.id}
-                        className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-muted/10"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline">{pair.pairCode}</Badge>
-                            {pair.type && <Badge variant="secondary">{pair.type}</Badge>}
-                            {pair.pathogen && <span className="text-sm font-medium">{pair.pathogen}</span>}
+                    {filteredReservoirPairs.map((pair) => {
+                      const imported = isReservoirPairImported(pair);
+                      return (
+                        <div
+                          key={pair.id}
+                          className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-muted/10"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline">{pair.pairCode}</Badge>
+                              {pair.type && <Badge variant="secondary">{pair.type}</Badge>}
+                              {pair.pathogen && <span className="text-sm font-medium">{pair.pathogen}</span>}
+                            </div>
+                            <p className="text-sm mt-1">
+                              {pair.point1} ↔ {pair.point2}
+                            </p>
+                            {pair.symptoms && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{pair.symptoms}</p>
+                            )}
                           </div>
-                          <p className="text-sm mt-1">
-                            {pair.point1} ↔ {pair.point2}
-                          </p>
-                          {pair.symptoms && (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{pair.symptoms}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary hover:text-primary"
+                                  onClick={() => handleShowInfo(
+                                    {
+                                      id: pair.id,
+                                      pairCode: pair.pairCode,
+                                      point1: pair.point1,
+                                      point2: pair.point2,
+                                      kind: 'pair',
+                                    },
+                                    'symptoms'
+                                  )}
+                                >
+                                  <Stethoscope className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Sintomatología</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary hover:text-primary"
+                                  onClick={() => handleShowInfo(
+                                    {
+                                      id: pair.id,
+                                      pairCode: pair.pairCode,
+                                      point1: pair.point1,
+                                      point2: pair.point2,
+                                      kind: 'pair',
+                                    },
+                                    'recommendations'
+                                  )}
+                                >
+                                  <Lightbulb className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Recomendaciones</TooltipContent>
+                            </Tooltip>
+                            {imported ? (
+                              <span className="ml-2 text-sm font-medium text-muted-foreground">Importado</span>
+                            ) : (
                               <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-primary hover:text-primary"
-                                onClick={() => handleShowInfo(
-                                  {
-                                    id: pair.id,
-                                    pairCode: pair.pairCode,
-                                    point1: pair.point1,
-                                    point2: pair.point2,
-                                    kind: 'pair',
-                                  },
-                                  'symptoms'
-                                )}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="ml-2"
+                                onClick={() => importReservoirPair(pair)}
                               >
-                                <Stethoscope className="w-4 h-4" />
+                                Importar
                               </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Sintomatología</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-primary hover:text-primary"
-                                onClick={() => handleShowInfo(
-                                  {
-                                    id: pair.id,
-                                    pairCode: pair.pairCode,
-                                    point1: pair.point1,
-                                    point2: pair.point2,
-                                    kind: 'pair',
-                                  },
-                                  'recommendations'
-                                )}
-                              >
-                                <Lightbulb className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Recomendaciones</TooltipContent>
-                          </Tooltip>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
