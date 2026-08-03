@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,6 +18,9 @@ import {
   Image as ImageIcon,
   Stethoscope,
   Lightbulb,
+  History,
+  FileText,
+  TimerReset,
 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { defaultClinicalChecklist } from '@/data/clinicalChecklist';
@@ -28,6 +31,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Command,
   CommandEmpty,
@@ -106,6 +116,8 @@ export function SessionPage() {
   const [pairTimers, setPairTimers] = useState<Record<string, PairTimerState>>({});
   const [editingPairTimer, setEditingPairTimer] = useState<string | null>(null);
   const [editingTimerValue, setEditingTimerValue] = useState<string>('');
+  const [editingPairLabel, setEditingPairLabel] = useState<string | null>(null);
+  const [editingPairLabelValue, setEditingPairLabelValue] = useState('');
   const [checklist, setChecklist] = useState<ClinicalChecklistItem[]>(
     defaultClinicalChecklist.map(item => ({ ...item }))
   );
@@ -118,8 +130,33 @@ export function SessionPage() {
   const [infoDialogOpen, setInfoDialogOpen] = useState(false);
   const [infoDialogType, setInfoDialogType] = useState<'symptoms' | 'recommendations'>('symptoms');
   const [infoDialogPair, setInfoDialogPair] = useState<BiomagneticPair | null>(null);
+  const [sessionInfoOpen, setSessionInfoOpen] = useState(false);
+  const [sessionInfoView, setSessionInfoView] = useState<'history' | 'clinical' | 'reservoir'>('history');
+  const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
+  const [reservoirTypeFilter, setReservoirTypeFilter] = useState<string>('all');
 
   const DEFAULT_TIMER_SECONDS = 12 * 60;
+  const generateSelectedPairId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const previousSessions = useMemo(
+    () =>
+      sessions
+        .filter((session) => session.patientId === patientId && session.id !== existingSession?.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [existingSession?.id, patientId, sessions]
+  );
+  const latestPreviousSession = previousSessions[0];
+  const selectedHistorySession = previousSessions.find((session) => session.id === selectedHistorySessionId) || null;
+  const uniqueReservoirTypes = useMemo(
+    () => [...new Set(biomagneticPairs.map((pair) => pair.type).filter(Boolean))].sort(),
+    [biomagneticPairs]
+  );
+  const filteredReservoirPairs = useMemo(
+    () =>
+      biomagneticPairs.filter((pair) =>
+        reservoirTypeFilter === 'all' ? true : pair.type === reservoirTypeFilter
+      ),
+    [biomagneticPairs, reservoirTypeFilter]
+  );
 
   const getPairTimerState = (overrides?: Partial<PairTimerState>): PairTimerState => ({
     baseSeconds: DEFAULT_TIMER_SECONDS,
@@ -138,7 +175,13 @@ export function SessionPage() {
   useEffect(() => {
     if (!existingSession) return;
 
-    setSelectedPairs(existingSession.selectedPairs || []);
+    setSelectedPairs(
+      (existingSession.selectedPairs || []).map((pair) => ({
+        ...pair,
+        id: pair.id || pair.pairCode || generateSelectedPairId(),
+        kind: pair.kind || (pair.source === 'timer' ? 'timer' : 'pair'),
+      }))
+    );
     setChecklist(
       existingSession.clinicalChecklist?.length
         ? existingSession.clinicalChecklist
@@ -149,7 +192,7 @@ export function SessionPage() {
     setPairTimers(
       (existingSession.selectedPairs || []).reduce<Record<string, PairTimerState>>(
         (acc, pair) => {
-          acc[pair.pairCode] = getPairTimerState();
+          acc[pair.id || pair.pairCode] = getPairTimerState();
           return acc;
         },
         {}
@@ -210,20 +253,23 @@ export function SessionPage() {
     pair: BiomagneticPair,
     options?: { source?: SelectedPair['source']; resetSelectors?: boolean }
   ) => {
-    if (selectedPairs.some(sp => sp.pairCode === pair.pairCode)) {
+    if (selectedPairs.some(sp => sp.kind !== 'timer' && sp.pairCode === pair.pairCode)) {
       toast.info('Este par ya está agregado');
       return;
     }
     const source = options?.source || 'manual';
+    const pairId = generateSelectedPairId();
     setSelectedPairs(prev => [...prev, {
+      id: pairId,
       pairCode: pair.pairCode,
       point1: pair.point1,
       point2: pair.point2,
+      kind: 'pair',
       source,
     }]);
     setPairTimers(prev => ({
       ...prev,
-      [pair.pairCode]: prev[pair.pairCode] || getPairTimerState(),
+      [pairId]: prev[pairId] || getPairTimerState(),
     }));
     if (options?.resetSelectors ?? true) {
       setSelectedPoint('');
@@ -233,12 +279,99 @@ export function SessionPage() {
     toast.success(`Par ${pair.pairCode} agregado`);
   };
 
+  const addStandaloneTimer = () => {
+    const timerId = generateSelectedPairId();
+    const timerIndex = selectedPairs.filter((pair) => pair.kind === 'timer').length + 1;
+    setSelectedPairs((prev) => [
+      ...prev,
+      {
+        id: timerId,
+        pairCode: `CRONO-${timerIndex}`,
+        point1: '',
+        point2: '',
+        label: `Crono ${timerIndex}`,
+        kind: 'timer',
+        source: 'timer',
+      },
+    ]);
+    setPairTimers((prev) => ({
+      ...prev,
+      [timerId]: getPairTimerState(),
+    }));
+    toast.success('Crono agregado');
+  };
+
+  const importHistoricalPair = (pair: SelectedPair) => {
+    if ((pair.kind || 'pair') === 'timer') {
+      return;
+    }
+
+    if (selectedPairs.some((item) => item.kind !== 'timer' && item.pairCode === pair.pairCode)) {
+      return;
+    }
+
+    const pairId = generateSelectedPairId();
+    setSelectedPairs((prev) => [
+      ...prev,
+      {
+        ...pair,
+        id: pairId,
+        kind: pair.kind || 'pair',
+      },
+    ]);
+    setPairTimers((prev) => ({
+      ...prev,
+      [pairId]: getPairTimerState(),
+    }));
+    toast.success(`Par ${pair.label || pair.pairCode} importado`);
+  };
+
+  const isHistoricalPairImported = (pair: SelectedPair) =>
+    selectedPairs.some((item) => item.kind !== 'timer' && item.pairCode === pair.pairCode);
+
+  const importPreviousSessionPairs = () => {
+    if (!latestPreviousSession) {
+      toast.info('No hay una sesión anterior para importar');
+      return;
+    }
+
+    const existingCodes = new Set(
+      selectedPairs.filter((pair) => pair.kind !== 'timer').map((pair) => pair.pairCode)
+    );
+
+    const importedPairs = latestPreviousSession.selectedPairs
+      .filter((pair) => (pair.kind || 'pair') !== 'timer')
+      .filter((pair) => !existingCodes.has(pair.pairCode))
+      .map((pair) => ({
+        ...pair,
+        id: generateSelectedPairId(),
+        kind: pair.kind || 'pair',
+      }));
+
+    if (importedPairs.length === 0) {
+      toast.info('La sesión anterior no tiene pares nuevos para importar');
+      return;
+    }
+
+    setSelectedPairs((prev) => [...importedPairs, ...prev]);
+    setPairTimers((prev) => {
+      const next = { ...prev };
+      importedPairs.forEach((pair) => {
+        if (pair.id) {
+          next[pair.id] = getPairTimerState();
+        }
+      });
+      return next;
+    });
+    toast.success(`Importados ${importedPairs.length} pares de la sesión anterior`);
+  };
+
   // Remove pair from session
-  const removePair = (pairCode: string) => {
-    setSelectedPairs(prev => prev.filter(p => p.pairCode !== pairCode));
+  const removePair = (pairId: string) => {
+    setSelectedPairs(prev => prev.filter(p => (p.id || p.pairCode) !== pairId));
     setPairTimers(prev => {
       const next = { ...prev };
-      delete next[pairCode];
+      delete next[pairId];
       return next;
     });
   };
@@ -335,6 +468,36 @@ export function SessionPage() {
     setEditingTimerValue('');
   };
 
+  const startEditingPairLabel = (pair: SelectedPair) => {
+    const pairKey = pair.id || pair.pairCode;
+    setEditingPairLabel(pairKey);
+    setEditingPairLabelValue(pair.label || pair.pairCode);
+  };
+
+  const cancelEditingPairLabel = () => {
+    setEditingPairLabel(null);
+    setEditingPairLabelValue('');
+  };
+
+  const commitEditingPairLabel = (pairKey: string) => {
+    const nextLabel = editingPairLabelValue.trim();
+    if (!nextLabel) {
+      toast.error('El nombre no puede estar vacío');
+      return;
+    }
+    setSelectedPairs((prev) =>
+      prev.map((pair) =>
+        (pair.id || pair.pairCode) === pairKey
+          ? {
+              ...pair,
+              label: nextLabel,
+            }
+          : pair
+      )
+    );
+    cancelEditingPairLabel();
+  };
+
   const commitEditingTimer = (pairCode: string) => {
     const seconds = parseTimerInput(editingTimerValue);
     if (seconds === null) {
@@ -359,6 +522,9 @@ export function SessionPage() {
 
   const getKnowledgePair = (selectedPair: SelectedPair) =>
     biomagneticPairs.find(pair => pair.pairCode === selectedPair.pairCode);
+
+  const getHistoricalCardKey = (sessionKey: string, pair: SelectedPair) =>
+    `${sessionKey}:${pair.id || pair.pairCode}:${pair.source || 'manual'}`;
 
   const getProtocolNumber = (item: ProtocolItem) =>
     String(item.columns[0] || '')
@@ -413,10 +579,21 @@ export function SessionPage() {
             </div>
           </div>
         </div>
-        <Button onClick={handleSave}>
-          <Save className="w-4 h-4 mr-2" />
-          {existingSession ? 'Guardar cambios' : 'Guardar Sesión'}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            type="button"
+            onClick={importPreviousSessionPairs}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+            disabled={!latestPreviousSession}
+          >
+            <History className="w-4 h-4 mr-2" />
+            Importar Pares Sesión Anterior
+          </Button>
+          <Button onClick={handleSave}>
+            <Save className="w-4 h-4 mr-2" />
+            {existingSession ? 'Guardar cambios' : 'Guardar Sesión'}
+          </Button>
+        </div>
       </div>
 
       {/* Warnings */}
@@ -558,10 +735,20 @@ export function SessionPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">Resultado del Par</CardTitle>
-                  <Button size="sm" onClick={() => addPairToSession(currentPairResult)}>
-                    <Plus className="w-4 h-4 mr-1" />
-                    Agregar
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addPairToSession(currentPairResult, { source: 'logical' })}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Par LOG
+                    </Button>
+                    <Button size="sm" onClick={() => addPairToSession(currentPairResult)}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
@@ -673,11 +860,17 @@ export function SessionPage() {
           {/* Selected pairs */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                Pares Seleccionados
-                {selectedPairs.length > 0 && (
-                  <Badge variant="secondary">{selectedPairs.length}</Badge>
-                )}
+              <CardTitle className="text-base flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  Pares Seleccionados
+                  {selectedPairs.length > 0 && (
+                    <Badge variant="secondary">{selectedPairs.length}</Badge>
+                  )}
+                </span>
+                <Button variant="outline" size="sm" onClick={addStandaloneTimer}>
+                  <TimerReset className="w-4 h-4 mr-2" />
+                  Añadir crono
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -688,10 +881,11 @@ export function SessionPage() {
               ) : (
                 <div className="space-y-2">
                   {selectedPairs.map((pair) => {
-                    const timer = pairTimers[pair.pairCode] || getPairTimerState();
+                    const pairKey = pair.id || pair.pairCode;
+                    const timer = pairTimers[pairKey] || getPairTimerState();
                     return (
                       <div
-                        key={pair.pairCode}
+                        key={pairKey}
                         className={cn(
                           "flex items-center justify-between p-3 bg-success/5 border border-success/20 rounded-lg",
                           timer.isRunning && "border-4 border-success/50",
@@ -700,65 +894,108 @@ export function SessionPage() {
                         )}
                       >
                         <div className="flex items-center gap-3">
-                          <CheckCircle2
-                            className={cn(
-                              "w-5 h-5 shrink-0",
-                              pair.source === 'protocol' ? "text-foreground" : "text-success"
-                            )}
-                          />
+                          {pair.source === 'logical' ? (
+                            <div className="w-8 shrink-0 text-center text-xs font-semibold text-foreground">
+                              LOG
+                            </div>
+                          ) : (
+                            <CheckCircle2
+                              className={cn(
+                                "w-5 h-5 shrink-0",
+                                pair.source === 'protocol' ? "text-foreground" : "text-success"
+                              )}
+                            />
+                          )}
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className="font-medium text-sm">{pair.pairCode}</p>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-primary hover:text-primary"
-                                    onClick={() => handleShowInfo(pair, 'symptoms')}
-                                  >
-                                    <Stethoscope className="w-3.5 h-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Sintomatología</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-primary hover:text-primary"
-                                    onClick={() => handleShowInfo(pair, 'recommendations')}
-                                  >
-                                    <Lightbulb className="w-3.5 h-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Recomendaciones</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                    onClick={() => {
-                                      setImageDialogPair(pair);
-                                      setImageDialogOpen(true);
-                                    }}
-                                  >
-                                    <ImageIcon className="w-3.5 h-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Ver imagen</TooltipContent>
-                              </Tooltip>
+                              {pair.kind === 'timer' && editingPairLabel === pairKey ? (
+                                <Input
+                                  value={editingPairLabelValue}
+                                  onChange={(e) => setEditingPairLabelValue(e.target.value)}
+                                  className="h-7 w-[150px] text-sm"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      commitEditingPairLabel(pairKey);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      cancelEditingPairLabel();
+                                    }
+                                  }}
+                                  onBlur={() => commitEditingPairLabel(pairKey)}
+                                  autoFocus
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "font-medium text-sm text-left",
+                                    pair.kind === 'timer' && "cursor-text hover:text-primary transition-colors"
+                                  )}
+                                  onClick={() => {
+                                    if (pair.kind === 'timer') {
+                                      startEditingPairLabel(pair);
+                                    }
+                                  }}
+                                >
+                                  {pair.label || pair.pairCode}
+                                </button>
+                              )}
+                              {pair.kind !== 'timer' && (
+                                <>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-primary hover:text-primary"
+                                        onClick={() => handleShowInfo(pair, 'symptoms')}
+                                      >
+                                        <Stethoscope className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Sintomatología</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-primary hover:text-primary"
+                                        onClick={() => handleShowInfo(pair, 'recommendations')}
+                                      >
+                                        <Lightbulb className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Recomendaciones</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                        onClick={() => {
+                                          setImageDialogPair(pair);
+                                          setImageDialogOpen(true);
+                                        }}
+                                      >
+                                        <ImageIcon className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Ver imagen</TooltipContent>
+                                  </Tooltip>
+                                </>
+                              )}
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {pair.point1} ↔ {pair.point2}
+                              {pair.kind === 'timer' ? 'Crono libre' : `${pair.point1} ↔ ${pair.point2}`}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          {editingPairTimer === pair.pairCode ? (
+                          {editingPairTimer === pairKey ? (
                             <Input
                               value={editingTimerValue}
                               onChange={(e) => setEditingTimerValue(e.target.value)}
@@ -767,7 +1004,7 @@ export function SessionPage() {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
-                                  commitEditingTimer(pair.pairCode);
+                                  commitEditingTimer(pairKey);
                                 }
                                 if (e.key === 'Escape') {
                                   e.preventDefault();
@@ -786,7 +1023,7 @@ export function SessionPage() {
                               size="icon"
                               className="text-success hover:text-success"
                               onClick={() => {
-                                if (editingPairTimer === pair.pairCode) {
+                                if (editingPairTimer === pairKey) {
                                   const seconds = parseTimerInput(editingTimerValue);
                                   if (seconds === null) {
                                     toast.error('Formato inválido. Usa mm o mm:ss');
@@ -794,7 +1031,7 @@ export function SessionPage() {
                                   }
                                   setPairTimers(prev => ({
                                     ...prev,
-                                    [pair.pairCode]: {
+                                    [pairKey]: {
                                       baseSeconds: seconds,
                                       remainingSeconds: seconds,
                                       isRunning: true,
@@ -809,7 +1046,7 @@ export function SessionPage() {
                                   : getRemainingSeconds(timer);
                                 setPairTimers(prev => ({
                                   ...prev,
-                                  [pair.pairCode]: {
+                                  [pairKey]: {
                                     ...timer,
                                     remainingSeconds,
                                     isRunning: true,
@@ -827,7 +1064,7 @@ export function SessionPage() {
                               onClick={() => {
                                 setPairTimers(prev => ({
                                   ...prev,
-                                  [pair.pairCode]: {
+                                  [pairKey]: {
                                     ...timer,
                                     remainingSeconds: timer.baseSeconds,
                                     isRunning: false,
@@ -843,14 +1080,14 @@ export function SessionPage() {
                               size="icon"
                               className={cn(
                                 "text-muted-foreground hover:text-foreground",
-                                editingPairTimer === pair.pairCode && "bg-muted/80 border border-border shadow-inner"
+                                editingPairTimer === pairKey && "bg-muted/80 border border-border shadow-inner"
                               )}
                               onClick={() => {
-                                if (editingPairTimer === pair.pairCode) {
-                                  commitEditingTimer(pair.pairCode);
+                                if (editingPairTimer === pairKey) {
+                                  commitEditingTimer(pairKey);
                                   return;
                                 }
-                                startEditingTimer(pair.pairCode, timer.baseSeconds);
+                                startEditingTimer(pairKey, timer.baseSeconds);
                               }}
                             >
                               <Pencil className="w-4 h-4" />
@@ -859,7 +1096,7 @@ export function SessionPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => removePair(pair.pairCode)}
+                            onClick={() => removePair(pairKey)}
                             className="text-muted-foreground hover:text-destructive"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -898,6 +1135,50 @@ export function SessionPage() {
                   </label>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Info</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                className="justify-start"
+                onClick={() => {
+                  setSessionInfoView('history');
+                  setSelectedHistorySessionId(null);
+                  setSessionInfoOpen(true);
+                }}
+              >
+                <History className="w-4 h-4 mr-2" />
+                Sesiones anteriores
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start"
+                onClick={() => {
+                  setSessionInfoView('clinical');
+                  setSelectedHistorySessionId(null);
+                  setSessionInfoOpen(true);
+                }}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Información clínica
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start"
+                onClick={() => {
+                  setSessionInfoView('reservoir');
+                  setSelectedHistorySessionId(null);
+                  setSessionInfoOpen(true);
+                }}
+              >
+                <Stethoscope className="w-4 h-4 mr-2" />
+                Pares Reservorio
+              </Button>
             </CardContent>
           </Card>
 
@@ -958,6 +1239,312 @@ export function SessionPage() {
                   alt={getPairImageLabel(imageDialogPair.pairCode, imageDialogPair.point1, imageDialogPair.point2)}
                   className="w-full h-auto object-contain"
                 />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={sessionInfoOpen}
+          onOpenChange={(open) => {
+            setSessionInfoOpen(open);
+            if (!open) {
+              setSelectedHistorySessionId(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader className="pr-10">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-2">
+                  {sessionInfoView === 'history' && selectedHistorySession && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2"
+                      onClick={() => setSelectedHistorySessionId(null)}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Volver a sesiones
+                    </Button>
+                  )}
+                  <DialogTitle>
+                    {sessionInfoView === 'history'
+                      ? (selectedHistorySession ? 'Pares de la sesión' : 'Sesiones anteriores')
+                      : sessionInfoView === 'clinical'
+                        ? 'Información clínica del paciente'
+                        : 'Pares Reservorio'}
+                  </DialogTitle>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => {
+                    setSelectedHistorySessionId(null);
+                    setSessionInfoOpen(false);
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </DialogHeader>
+            {sessionInfoView === 'history' ? (
+              selectedHistorySession ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <p className="font-medium">
+                      {format(new Date(selectedHistorySession.date), "d 'de' MMMM, yyyy", { locale: es })}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedHistorySession.selectedPairs.filter((pair) => (pair.kind || 'pair') !== 'timer').length} pares en esta sesión
+                    </p>
+                  </div>
+                  {selectedHistorySession.selectedPairs.filter((pair) => (pair.kind || 'pair') !== 'timer').length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Esta sesión no tiene pares importables.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedHistorySession.selectedPairs
+                        .filter((pair) => (pair.kind || 'pair') !== 'timer')
+                        .map((pair) => {
+                          const imported = isHistoricalPairImported(pair);
+                          return (
+                            <div
+                              key={getHistoricalCardKey(selectedHistorySession.id, pair)}
+                              className="flex items-center justify-between p-3 bg-success/5 border border-success/20 rounded-lg"
+                            >
+                              <div className="flex items-center gap-3">
+                                {pair.source === 'logical' ? (
+                                  <div className="w-8 shrink-0 text-center text-xs font-semibold text-foreground">
+                                    LOG
+                                  </div>
+                                ) : (
+                                  <CheckCircle2
+                                    className={cn(
+                                      "w-5 h-5 shrink-0",
+                                      pair.source === 'protocol' ? "text-foreground" : "text-success"
+                                    )}
+                                  />
+                                )}
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-sm">{pair.label || pair.pairCode}</p>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6 text-primary hover:text-primary"
+                                          onClick={() => handleShowInfo(pair, 'symptoms')}
+                                        >
+                                          <Stethoscope className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Sintomatología</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6 text-primary hover:text-primary"
+                                          onClick={() => handleShowInfo(pair, 'recommendations')}
+                                        >
+                                          <Lightbulb className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Recomendaciones</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                          onClick={() => {
+                                            setImageDialogPair(pair);
+                                            setImageDialogOpen(true);
+                                          }}
+                                        >
+                                          <ImageIcon className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Ver imagen</TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {pair.point1} ↔ {pair.point2}
+                                  </p>
+                                </div>
+                              </div>
+                              {imported ? (
+                                <span className="text-sm font-medium text-muted-foreground">Importado</span>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => importHistoricalPair(pair)}
+                                >
+                                  Importar
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              ) : previousSessions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Este paciente no tiene sesiones anteriores.</p>
+              ) : (
+                <div className="space-y-3">
+                  {previousSessions.map((session) => (
+                    <Card
+                      key={session.id}
+                      className="cursor-pointer transition-colors hover:border-primary/40 hover:bg-muted/20"
+                      onClick={() => setSelectedHistorySessionId(session.id)}
+                    >
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-medium">
+                            {format(new Date(session.date), "d 'de' MMMM, yyyy", { locale: es })}
+                          </p>
+                          <Badge variant="secondary">{session.selectedPairs.length} elementos</Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {session.selectedPairs.filter((pair) => (pair.kind || 'pair') !== 'timer').map((pair) => (
+                            <Badge key={pair.id || `${session.id}-${pair.pairCode}`} variant="outline">
+                              {pair.label || pair.pairCode}
+                            </Badge>
+                          ))}
+                        </div>
+                        {session.summary && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Resumen</p>
+                            <p className="text-sm">{session.summary}</p>
+                          </div>
+                        )}
+                        {session.freeNotes && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Notas</p>
+                            <p className="text-sm whitespace-pre-wrap">{session.freeNotes}</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )
+            ) : sessionInfoView === 'clinical' ? (
+              <Card>
+                <CardContent className="p-4 space-y-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Síntomas / Patologías</p>
+                    <p>{patient.symptomsPathologies || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Patologías Recurrentes</p>
+                    <p>{patient.recurrentPathologies || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Intervenciones quirúrgicas</p>
+                    <p>{patient.surgicalInterventions || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Medicamentos</p>
+                    <p>{patient.medications || '-'}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Select value={reservoirTypeFilter} onValueChange={setReservoirTypeFilter}>
+                    <SelectTrigger className="w-full sm:w-56">
+                      <SelectValue placeholder="Tipo de patógeno" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los tipos</SelectItem>
+                      {uniqueReservoirTypes.map((type) => (
+                        <SelectItem key={type} value={type!}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {filteredReservoirPairs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No hay pares reservorio para este filtro.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredReservoirPairs.map((pair) => (
+                      <div
+                        key={pair.id}
+                        className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-muted/10"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="outline">{pair.pairCode}</Badge>
+                            {pair.type && <Badge variant="secondary">{pair.type}</Badge>}
+                            {pair.pathogen && <span className="text-sm font-medium">{pair.pathogen}</span>}
+                          </div>
+                          <p className="text-sm mt-1">
+                            {pair.point1} ↔ {pair.point2}
+                          </p>
+                          {pair.symptoms && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{pair.symptoms}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary hover:text-primary"
+                                onClick={() => handleShowInfo(
+                                  {
+                                    id: pair.id,
+                                    pairCode: pair.pairCode,
+                                    point1: pair.point1,
+                                    point2: pair.point2,
+                                    kind: 'pair',
+                                  },
+                                  'symptoms'
+                                )}
+                              >
+                                <Stethoscope className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Sintomatología</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary hover:text-primary"
+                                onClick={() => handleShowInfo(
+                                  {
+                                    id: pair.id,
+                                    pairCode: pair.pairCode,
+                                    point1: pair.point1,
+                                    point2: pair.point2,
+                                    kind: 'pair',
+                                  },
+                                  'recommendations'
+                                )}
+                              >
+                                <Lightbulb className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Recomendaciones</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </DialogContent>

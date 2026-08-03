@@ -215,6 +215,17 @@ export function PatientDetailPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Patologías Recurrentes</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {patient.recurrentPathologies || 'Sin patologías recurrentes registradas'}
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="history">

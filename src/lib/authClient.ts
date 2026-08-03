@@ -44,10 +44,17 @@ const setAuthToken = (token: string | null) => {
   }
 };
 
+export const clearAuthToken = () => {
+  setAuthToken(null);
+};
+
 const authHeaders = () => {
   const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
+
+const isJsonResponse = (response: Response) =>
+  (response.headers.get('content-type') || '').toLowerCase().includes('application/json');
 
 async function parseJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
@@ -65,6 +72,9 @@ export async function loginRequest(username: string, password: string): Promise<
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
+    if (!isJsonResponse(response)) {
+      return { ok: false, error: 'AUTH_API_UNAVAILABLE' };
+    }
     const payload = await parseJson<LoginResponse>(response);
 
     if (!response.ok || !payload.ok || !payload.user || !payload.token) {
@@ -85,6 +95,9 @@ export async function registerRequest(username: string, password: string): Promi
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
+    if (!isJsonResponse(response)) {
+      return { ok: false, error: 'AUTH_API_UNAVAILABLE' };
+    }
     const payload = await parseJson<{ ok: boolean; error?: string }>(response);
 
     if (!response.ok || !payload.ok) {
@@ -107,6 +120,9 @@ export async function fetchSessionRequest(): Promise<ApiResult<User | null>> {
     const response = await fetch(`${AUTH_API_BASE}/auth-session`, {
       headers: authHeaders(),
     });
+    if (!isJsonResponse(response)) {
+      return { ok: false, error: 'AUTH_API_UNAVAILABLE' };
+    }
 
     if (response.status === 401) {
       setAuthToken(null);
@@ -144,6 +160,9 @@ export async function fetchAccountsRequest(): Promise<ApiResult<AuthAccount[]>> 
     const response = await fetch(`${AUTH_API_BASE}/auth-users`, {
       headers: authHeaders(),
     });
+    if (!isJsonResponse(response)) {
+      return { ok: false, error: 'AUTH_API_UNAVAILABLE' };
+    }
     const payload = await parseJson<AccountsResponse>(response);
 
     if (!response.ok || !payload.ok || !payload.accounts) {
@@ -166,6 +185,9 @@ export async function updateAccountStatusRequest(userId: string, status: UserSta
       },
       body: JSON.stringify({ userId, status }),
     });
+    if (!isJsonResponse(response)) {
+      return { ok: false, error: 'AUTH_API_UNAVAILABLE' };
+    }
     const payload = await parseJson<AccountMutationResponse>(response);
 
     if (!response.ok || !payload.ok || !payload.account) {
@@ -188,6 +210,9 @@ export async function deleteAccountRequest(userId: string): Promise<ApiResult<nu
       },
       body: JSON.stringify({ userId }),
     });
+    if (!isJsonResponse(response)) {
+      return { ok: false, error: 'AUTH_API_UNAVAILABLE' };
+    }
     const payload = await parseJson<{ ok: boolean; error?: string }>(response);
 
     if (!response.ok || !payload.ok) {
@@ -197,5 +222,16 @@ export async function deleteAccountRequest(userId: string): Promise<ApiResult<nu
     return { ok: true, data: null };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Delete account error' };
+  }
+}
+
+export async function checkAuthApiAvailability(): Promise<boolean> {
+  try {
+    const response = await fetch(`${AUTH_API_BASE}/auth-session`, {
+      headers: { Accept: 'application/json' },
+    });
+    return isJsonResponse(response);
+  } catch {
+    return false;
   }
 }

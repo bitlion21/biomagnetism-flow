@@ -12,6 +12,7 @@ export interface Patient {
   age?: number;
   sex?: 'male' | 'female' | 'other';
   symptomsPathologies?: string;
+  recurrentPathologies?: string;
   surgicalInterventions?: string;
   hasPacemaker?: boolean;
   isPregnant?: boolean;
@@ -49,11 +50,14 @@ export interface Session {
 }
 
 export interface SelectedPair {
+  id?: string;
   pairCode: string;
   point1: string;
   point2: string;
+  label?: string;
+  kind?: 'pair' | 'timer';
   notes?: string;
-  source?: 'manual' | 'protocol';
+  source?: 'manual' | 'protocol' | 'logical' | 'timer';
 }
 
 export interface ClinicalChecklistItem {

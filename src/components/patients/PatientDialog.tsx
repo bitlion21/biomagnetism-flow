@@ -44,6 +44,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
     birthDate: '',
     sex: '' as 'male' | 'female' | 'other' | '',
     symptomsPathologies: '',
+    recurrentPathologies: '',
     surgicalInterventions: '',
     hasPacemaker: false,
     isPregnant: false,
@@ -65,6 +66,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
         birthDate: patient.birthDate || '',
         sex: patient.sex || '',
         symptomsPathologies: patient.symptomsPathologies || '',
+        recurrentPathologies: patient.recurrentPathologies || '',
         surgicalInterventions: patient.surgicalInterventions || '',
         hasPacemaker: patient.hasPacemaker || false,
         isPregnant: patient.isPregnant || false,
@@ -85,6 +87,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
         birthDate: '',
         sex: '',
         symptomsPathologies: '',
+        recurrentPathologies: '',
         surgicalInterventions: '',
         hasPacemaker: false,
         isPregnant: false,
@@ -136,6 +139,7 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
       age: getAgeFromBirthDate(formData.birthDate),
       sex: formData.sex || undefined,
       symptomsPathologies: formData.symptomsPathologies.trim() || undefined,
+      recurrentPathologies: formData.recurrentPathologies.trim() || undefined,
       surgicalInterventions: formData.surgicalInterventions.trim() || undefined,
       hasPacemaker: formData.hasPacemaker,
       isPregnant: formData.isPregnant,
@@ -274,6 +278,15 @@ export function PatientDialog({ open, onClose, patient }: PatientDialogProps) {
                   placeholder="Describe los síntomas o patologías del paciente..."
                   value={formData.symptomsPathologies}
                   onChange={(e) => setFormData(prev => ({ ...prev, symptomsPathologies: e.target.value }))}
+                />
+              </div>
+              <div className="form-field">
+                <Label htmlFor="recurrentPathologies">Patologías Recurrentes</Label>
+                <Textarea
+                  id="recurrentPathologies"
+                  placeholder="Patologías que se repiten con frecuencia en este paciente..."
+                  value={formData.recurrentPathologies}
+                  onChange={(e) => setFormData(prev => ({ ...prev, recurrentPathologies: e.target.value }))}
                 />
               </div>
               <div className="form-field">
