@@ -1,4 +1,4 @@
-const { getSql } = require('./_lib/neon-client');
+import { getSql } from './_lib/neon-client.js';
 
 const ALLOWED_ENTITIES = new Set(['patients', 'appointments', 'sessions']);
 const ALLOWED_ACTIONS = new Set(['upsert', 'delete']);
@@ -208,7 +208,7 @@ async function applyMutation(sql, username, mutation) {
   throw new Error(`Unsupported mutation ${mutation.entity}/${mutation.action}`);
 }
 
-exports.handler = async function handler(event) {
+export const handler = async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }

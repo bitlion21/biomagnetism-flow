@@ -40,7 +40,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       )}
       title={syncStatus.lastError || undefined}
     >
-      {!syncStatus.isOnline ? 'Offline' : syncStatus.syncing ? 'Sincronizando...' : syncStatus.pendingCount > 0 ? `${syncStatus.pendingCount} pendientes` : 'Sincronizado'}
+      {!syncStatus.isOnline ? 'Offline' : syncStatus.syncing ? 'Sincronizando...' : syncStatus.lastError ? 'Error de sincronización' : syncStatus.pendingCount > 0 ? `${syncStatus.pendingCount} pendientes` : syncStatus.lastSyncAt ? 'Sincronizado' : 'Sin comprobar'}
     </Badge>
   );
 

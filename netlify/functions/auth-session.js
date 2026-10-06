@@ -1,6 +1,6 @@
-const { json, requireSession, revokeSession } = require('./_lib/auth');
+import { json, requireSession, revokeSession } from './_lib/auth.js';
 
-exports.handler = async function handler(event) {
+export const handler = async function handler(event) {
   try {
     if (event.httpMethod === 'GET') {
       const auth = await requireSession(event);

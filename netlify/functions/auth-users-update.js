@@ -1,8 +1,8 @@
-const { json, requireSession, toPublicUser } = require('./_lib/auth');
+import { json, requireSession, toPublicUser } from './_lib/auth.js';
 
 const ALLOWED_STATUSES = new Set(['pending', 'approved', 'disabled', 'rejected']);
 
-exports.handler = async function handler(event) {
+export const handler = async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }

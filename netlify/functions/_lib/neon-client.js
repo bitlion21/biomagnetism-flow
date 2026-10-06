@@ -1,4 +1,4 @@
-const { neon } = require('@neondatabase/serverless');
+import { neon } from '@neondatabase/serverless';
 
 function getSql() {
   const databaseUrl = process.env.NEON_DATABASE_URL || process.env.NETLIFY_DATABASE_URL;
@@ -8,6 +8,6 @@ function getSql() {
   return neon(databaseUrl);
 }
 
-module.exports = {
+export {
   getSql,
 };

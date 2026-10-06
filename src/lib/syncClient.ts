@@ -12,7 +12,18 @@ interface SyncBatchResponse {
   error?: string;
 }
 
-export const syncPendingMutations = async (username?: string): Promise<SyncBatchResponse> => {
+const activeSyncs = new Map<string, Promise<SyncBatchResponse>>();
+
+export const syncPendingMutations = (username?: string): Promise<SyncBatchResponse> => {
+  const key = username?.trim().toLowerCase() || '';
+  const active = activeSyncs.get(key);
+  if (active) return active;
+  const task = sendPendingMutations(key).finally(() => activeSyncs.delete(key));
+  activeSyncs.set(key, task);
+  return task;
+};
+
+const sendPendingMutations = async (username: string): Promise<SyncBatchResponse> => {
   if (!dataRuntime.syncEnabled) {
     return { ok: true, processedIds: [] };
   }
@@ -44,8 +55,9 @@ export const syncPendingMutations = async (username?: string): Promise<SyncBatch
       };
     }
 
-    const processed = new Set(payload.processedIds || []);
-    replaceSyncQueue(queue.filter((item) => !processed.has(item.id)), username);
+    // Read again: the therapist may have saved more records during the request.
+    const processed = new Set((payload.processedIds || []).filter((id) => batchIds.includes(id)));
+    replaceSyncQueue(getSyncQueue(username).filter((item) => !processed.has(item.id)), username);
     return { ok: true, processedIds: [...processed] };
   } catch (error) {
     incrementQueueAttempts(batchIds, username);

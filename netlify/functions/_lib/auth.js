@@ -1,5 +1,5 @@
-const crypto = require('crypto');
-const { getSql } = require('./neon-client');
+import crypto from 'node:crypto';
+import { getSql } from './neon-client.js';
 
 const SESSION_TTL_DAYS = 30;
 
@@ -188,7 +188,7 @@ async function revokeSession(sql, token) {
   await sql`delete from auth_sessions where token_hash = ${hashToken(token)}`;
 }
 
-module.exports = {
+export {
   json,
   normalizeUsername,
   hashPassword,

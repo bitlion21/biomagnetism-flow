@@ -1,6 +1,6 @@
-const { getSql } = require('./_lib/neon-client');
+import { getSql } from './_lib/neon-client.js';
 
-exports.handler = async function handler() {
+export const handler = async function handler() {
   try {
     const sql = getSql();
     const result = await sql`select now() as now`;

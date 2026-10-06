@@ -1,7 +1,7 @@
-const { json, normalizeUsername, setupAuth, hashPassword } = require('./_lib/auth');
-const crypto = require('crypto');
+import { json, normalizeUsername, setupAuth, hashPassword } from './_lib/auth.js';
+import crypto from 'node:crypto';
 
-exports.handler = async function handler(event) {
+export const handler = async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }

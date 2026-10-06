@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import * as XLSX from 'xlsx';
 import { Patient, Appointment, Session, BiomagneticPair, DiseaseCondition, ProtocolItem } from '@/types';
 import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
 import { isHybridDataMode } from '@/lib/dataRuntime';
-import { enqueueSyncMutation } from '@/lib/syncQueue';
+import { enqueueSyncMutation, getSyncQueue } from '@/lib/syncQueue';
+import { mergeCloudRecords } from '@/lib/mergeCloudRecords';
 import { fetchHybridBootstrap, syncPendingMutations } from '@/lib/syncClient';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -361,6 +362,9 @@ function generateId(): string {
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
   const currentUsername = user?.username?.trim().toLowerCase();
+  const usernameRef = useRef(currentUsername);
+  usernameRef.current = currentUsername;
+  const [loadedUsername, setLoadedUsername] = useState<string>();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -414,19 +418,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const rehydrateFromCloud = async (): Promise<boolean> => {
-    if (!isHybridDataMode() || !currentUsername) return false;
+    if (!isHybridDataMode() || !currentUsername || loadedUsername !== currentUsername) return false;
 
     const bootstrap = await fetchHybridBootstrap(currentUsername);
-    if (!bootstrap.ok) return false;
+    if (!bootstrap.ok || usernameRef.current !== currentUsername) return false;
+
+    // Preserve the current device's data before applying any cloud response.
+    const backupKey = `biomag_before_cloud:${currentUsername}`;
+    if (!localStorage.getItem(backupKey)) {
+      localStorage.setItem(backupKey, JSON.stringify({
+        savedAt: new Date().toISOString(), patients, appointments, sessions,
+      }));
+    }
 
     if (Array.isArray(bootstrap.patients)) {
-      setPatients(ensureFixedPatient(bootstrap.patients.filter(isPatientRecord)));
+      const remote = bootstrap.patients.filter(isPatientRecord);
+      setPatients(local => ensureFixedPatient(mergeCloudRecords(local, remote, 'patients', getSyncQueue(currentUsername))));
     }
     if (Array.isArray(bootstrap.appointments)) {
-      setAppointments(ensureFixedAppointment(bootstrap.appointments.filter(isAppointmentRecord)));
+      const remote = bootstrap.appointments.filter(isAppointmentRecord);
+      setAppointments(local => ensureFixedAppointment(mergeCloudRecords(local, remote, 'appointments', getSyncQueue(currentUsername))));
     }
     if (Array.isArray(bootstrap.sessions)) {
-      setSessions(bootstrap.sessions.filter(isSessionRecord));
+      const remote = bootstrap.sessions.filter(isSessionRecord);
+      setSessions(local => mergeCloudRecords(local, remote, 'sessions', getSyncQueue(currentUsername)));
     }
     return true;
   };
@@ -436,6 +451,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (isLoading) return;
 
     if (!currentUsername) {
+      setLoadedUsername(undefined);
       setPatients([]);
       setAppointments([]);
       setSessions([]);
@@ -460,6 +476,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPatients(savedPatients ? ensureFixedPatient(JSON.parse(savedPatients)) : ensureFixedPatient([]));
     setAppointments(savedAppointments ? ensureFixedAppointment(JSON.parse(savedAppointments)) : ensureFixedAppointment([]));
     setSessions(savedSessions ? JSON.parse(savedSessions) : []);
+    setLoadedUsername(currentUsername);
 
     if (savedPairs) {
       setBiomagneticPairs(JSON.parse(savedPairs));
@@ -479,22 +496,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       loadProtocols: !savedProtocolItems,
     });
 
-    if (isHybridDataMode()) {
-      void (async () => {
-        const bootstrap = await fetchHybridBootstrap(currentUsername);
-        if (!bootstrap.ok) return;
-
-        if (!savedPatients && Array.isArray(bootstrap.patients)) {
-          setPatients(ensureFixedPatient(bootstrap.patients.filter(isPatientRecord)));
-        }
-        if (!savedAppointments && Array.isArray(bootstrap.appointments)) {
-          setAppointments(ensureFixedAppointment(bootstrap.appointments.filter(isAppointmentRecord)));
-        }
-        if (!savedSessions && Array.isArray(bootstrap.sessions)) {
-          setSessions(bootstrap.sessions.filter(isSessionRecord));
-        }
-      })();
-    }
   }, [currentUsername, isLoading]);
 
   useEffect(() => {
@@ -526,19 +527,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Save to localStorage whenever data changes
   useEffect(() => {
-    if (!currentUsername) return;
+    if (!currentUsername || loadedUsername !== currentUsername || isLoading) return;
     localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.patients, currentUsername), JSON.stringify(patients));
-  }, [currentUsername, patients]);
+  }, [currentUsername, loadedUsername, isLoading, patients]);
 
   useEffect(() => {
-    if (!currentUsername) return;
+    if (!currentUsername || loadedUsername !== currentUsername || isLoading) return;
     localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.appointments, currentUsername), JSON.stringify(appointments));
-  }, [appointments, currentUsername]);
+  }, [appointments, currentUsername, loadedUsername, isLoading]);
 
   useEffect(() => {
-    if (!currentUsername) return;
+    if (!currentUsername || loadedUsername !== currentUsername || isLoading) return;
     localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.sessions, currentUsername), JSON.stringify(sessions));
-  }, [currentUsername, sessions]);
+  }, [currentUsername, loadedUsername, isLoading, sessions]);
 
   useEffect(() => {
     if (!currentUsername) return;

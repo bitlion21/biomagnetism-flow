@@ -1,6 +1,6 @@
-const { json, normalizeUsername, setupAuth, verifyPassword, createSession, toPublicUser } = require('./_lib/auth');
+import { json, normalizeUsername, setupAuth, verifyPassword, createSession, toPublicUser } from './_lib/auth.js';
 
-exports.handler = async function handler(event) {
+export const handler = async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }

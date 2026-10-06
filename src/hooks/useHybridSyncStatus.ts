@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { isHybridDataMode } from '@/lib/dataRuntime';
 import { getPendingSyncCount, syncPendingMutations } from '@/lib/syncClient';
 
@@ -15,6 +16,9 @@ interface HybridSyncStatus {
 
 export function useHybridSyncStatus(): HybridSyncStatus {
   const { user } = useAuth();
+  const { rehydrateFromCloud } = useData();
+  const rehydrateRef = useRef(rehydrateFromCloud);
+  rehydrateRef.current = rehydrateFromCloud;
   const username = user?.username;
   const enabled = isHybridDataMode();
   const [pendingCount, setPendingCount] = useState(() => getPendingSyncCount(username));
@@ -42,11 +46,13 @@ export function useHybridSyncStatus(): HybridSyncStatus {
 
     try {
       const result = await syncPendingMutations(username);
-      if (result.ok) {
+      if (result.ok && await rehydrateRef.current()) {
         setLastSyncAt(new Date().toISOString());
       } else {
-        setLastError(result.error || 'Error de sincronización');
+        setLastError(result.error || 'No se pudo consultar la nube. Los datos locales se conservan.');
       }
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : 'Error de sincronización');
     } finally {
       inFlightRef.current = false;
       setSyncing(false);
@@ -65,11 +71,15 @@ export function useHybridSyncStatus(): HybridSyncStatus {
     const onOffline = () => setIsOnline(false);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        refreshPendingCount();
+        void syncNow();
       }
     };
 
-    const interval = window.setInterval(refreshPendingCount, 3000);
+    void syncNow();
+    const interval = window.setInterval(() => {
+      refreshPendingCount();
+      if (navigator.onLine && document.visibilityState === 'visible') void syncNow();
+    }, 15000);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     document.addEventListener('visibilitychange', onVisibilityChange);

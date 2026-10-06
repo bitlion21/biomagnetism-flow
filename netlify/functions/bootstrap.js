@@ -1,4 +1,4 @@
-const { getSql } = require('./_lib/neon-client');
+import { getSql } from './_lib/neon-client.js';
 
 function json(statusCode, body) {
   return {
@@ -21,7 +21,7 @@ async function ensureOwnershipColumns(sql) {
   await sql`alter table sessions add column if not exists owner_username text`;
 }
 
-exports.handler = async function handler(event) {
+export const handler = async function handler(event) {
   if (event.httpMethod !== 'GET') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }
