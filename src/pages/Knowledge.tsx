@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Search, Edit, Trash2, BookOpen, Upload, Download, AlertTriangle, Stethoscope, Lightbulb, Image as ImageIcon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -46,6 +46,7 @@ import { ImportPairsDialog } from '@/components/knowledge/ImportPairsDialog';
 import { BiomagneticPair, DiseaseCondition, ProtocolItem } from '@/types';
 import { toast } from 'sonner';
 import { getPairImageLabel } from '@/lib/pairImage';
+import { normalizeSearchText as normalizeText } from '@/lib/searchText';
 import {
   Dialog,
   DialogContent,
@@ -86,16 +87,6 @@ export function KnowledgePage() {
   // Get unique pathogens and types for filters
   const uniquePathogens = [...new Set(biomagneticPairs.map(p => p.pathogen).filter(Boolean))];
   const uniqueTypes = [...new Set(biomagneticPairs.map(p => p.type).filter(Boolean))];
-
-  const normalizeText = useCallback(
-    (value?: string) =>
-      (value || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim(),
-    []
-  );
 
   const alphabet = useMemo(() => {
     const letters = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));

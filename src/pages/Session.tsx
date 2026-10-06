@@ -75,6 +75,7 @@ import {
 import { toast } from 'sonner';
 import { SelectedPair, ClinicalChecklistItem, BiomagneticPair, ProtocolItem } from '@/types';
 import { cn } from '@/lib/utils';
+import { normalizeSearchText } from '@/lib/searchText';
 import { getPairImageLabel, getPairNumber } from '@/lib/pairImage';
 
 type PairTimerState = {
@@ -238,7 +239,7 @@ export function SessionPage() {
     const pairs = getPairsByPoint(point);
     const pairsWithInfo = pairs.map(pair => ({
       pair,
-      isPoint1: pair.point1.toLowerCase() === point.toLowerCase(),
+      isPoint1: normalizeSearchText(pair.point1) === normalizeSearchText(point),
     }));
     setAvailablePairs(pairsWithInfo);
     setCurrentPairResult(null);

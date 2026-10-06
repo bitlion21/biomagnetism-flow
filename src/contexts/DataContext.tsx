@@ -5,6 +5,7 @@ import { initialBiomagneticPairs } from '@/data/biomagneticPairs';
 import { isHybridDataMode } from '@/lib/dataRuntime';
 import { enqueueSyncMutation, getSyncQueue } from '@/lib/syncQueue';
 import { mergeCloudRecords } from '@/lib/mergeCloudRecords';
+import { normalizeSearchText as normalizeText } from '@/lib/searchText';
 import { fetchHybridBootstrap, syncPendingMutations } from '@/lib/syncClient';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -174,13 +175,6 @@ const setDiseaseConditionsToIdb = async (username: string, value: DiseaseConditi
 
 type PairRow = Record<string, unknown>;
 type GenericRow = Record<string, unknown>;
-
-const normalizeText = (value: unknown) =>
-  String(value ?? '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
 
 const isProtocolHeaderRow = (columns: string[]) => {
   const first = normalizeText(columns[0]);
@@ -774,12 +768,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const getPairsByPoint1 = (point1: string) =>
-    biomagneticPairs.filter(p => p.point1.toLowerCase() === point1.toLowerCase());
+    biomagneticPairs.filter(p => normalizeText(p.point1) === normalizeText(point1));
 
   const getPairsByPoint = (point: string) =>
     biomagneticPairs.filter(p => 
-      p.point1.toLowerCase() === point.toLowerCase() || 
-      p.point2.toLowerCase() === point.toLowerCase()
+      normalizeText(p.point1) === normalizeText(point) ||
+      normalizeText(p.point2) === normalizeText(point)
     );
 
   const getUniquePoint1Values = () => 
