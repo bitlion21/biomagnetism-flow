@@ -57,13 +57,13 @@ const asDateOnly = (value, fallback = null) => {
   return String(value).slice(0, 10);
 };
 
-async function upsertPatient(sql, username, payload) {
+function upsertPatient(sql, username, payload) {
   const id = String(payload.id || '');
   if (!id) throw new Error('patient.id is required');
   const phone = String(payload.phone || '').trim();
   if (!phone) throw new Error('patient.phone is required');
 
-  await sql`
+  return sql`
     insert into patients (
       id, owner_username, phone, name, last_name, email, birth_date, sex, data, created_at, updated_at, deleted_at
     ) values (
@@ -95,22 +95,22 @@ async function upsertPatient(sql, username, payload) {
   `;
 }
 
-async function deletePatient(sql, username, recordId) {
-  await sql`
+function deletePatient(sql, username, recordId) {
+  return sql`
     update patients
     set deleted_at = now(), updated_at = now()
     where id = ${recordId} and owner_username = ${username}
   `;
 }
 
-async function upsertAppointment(sql, username, payload) {
+function upsertAppointment(sql, username, payload) {
   const id = String(payload.id || '');
   if (!id) throw new Error('appointment.id is required');
   if (!payload.patientId) throw new Error('appointment.patientId is required');
   if (!payload.date) throw new Error('appointment.date is required');
   if (!payload.time) throw new Error('appointment.time is required');
 
-  await sql`
+  return sql`
     insert into appointments (
       id, owner_username, patient_id, date, time, duration, status, notes, data, created_at, updated_at, deleted_at
     ) values (
@@ -142,21 +142,21 @@ async function upsertAppointment(sql, username, payload) {
   `;
 }
 
-async function deleteAppointment(sql, username, recordId) {
-  await sql`
+function deleteAppointment(sql, username, recordId) {
+  return sql`
     update appointments
     set deleted_at = now(), updated_at = now()
     where id = ${recordId} and owner_username = ${username}
   `;
 }
 
-async function upsertSession(sql, username, payload) {
+function upsertSession(sql, username, payload) {
   const id = String(payload.id || '');
   if (!id) throw new Error('session.id is required');
   if (!payload.patientId) throw new Error('session.patientId is required');
   if (!payload.date) throw new Error('session.date is required');
 
-  await sql`
+  return sql`
     insert into sessions (
       id, owner_username, patient_id, appointment_id, date, summary, selected_pairs, clinical_checklist, free_notes, data, created_at, updated_at, deleted_at
     ) values (
@@ -190,15 +190,15 @@ async function upsertSession(sql, username, payload) {
   `;
 }
 
-async function deleteSession(sql, username, recordId) {
-  await sql`
+function deleteSession(sql, username, recordId) {
+  return sql`
     update sessions
     set deleted_at = now(), updated_at = now()
     where id = ${recordId} and owner_username = ${username}
   `;
 }
 
-async function applyMutation(sql, username, mutation) {
+function applyMutation(sql, username, mutation) {
   if (mutation.entity === 'patients' && mutation.action === 'upsert') return upsertPatient(sql, username, mutation.payload);
   if (mutation.entity === 'patients' && mutation.action === 'delete') return deletePatient(sql, username, mutation.recordId);
   if (mutation.entity === 'appointments' && mutation.action === 'upsert') return upsertAppointment(sql, username, mutation.payload);
@@ -208,7 +208,7 @@ async function applyMutation(sql, username, mutation) {
   throw new Error(`Unsupported mutation ${mutation.entity}/${mutation.action}`);
 }
 
-export const handler = async function handler(event) {
+export const createSyncHandler = (getSqlConnection = getSql) => async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return json(405, { ok: false, error: 'Method not allowed' });
   }
@@ -221,26 +221,34 @@ export const handler = async function handler(event) {
     const validation = validateMutations(mutations);
     if (!validation.ok) return json(400, validation);
 
-    const sql = getSql();
+    const sql = getSqlConnection();
     await ensureOwnershipColumns(sql);
     await ensureSyncLogTable(sql);
 
     const processedIds = [];
     for (const mutation of mutations) {
-      const inserted = await sql`
-        insert into sync_mutation_log (mutation_id, owner_username, entity, action, record_id)
-        values (${mutation.id}, ${username}, ${mutation.entity}, ${mutation.action}, ${mutation.recordId})
-        on conflict (mutation_id) do nothing
-        returning mutation_id
+      const existing = await sql`
+        select owner_username, entity, action, record_id
+        from sync_mutation_log where mutation_id = ${mutation.id}
       `;
-
-      // Already processed previously: treat as success (idempotent).
-      if (!inserted || inserted.length === 0) {
+      if (existing.length > 0) {
+        const record = existing[0];
+        if (record.owner_username !== username || record.entity !== mutation.entity ||
+            record.action !== mutation.action || record.record_id !== mutation.recordId) {
+          throw new Error('mutation id conflicts with an existing operation');
+        }
         processedIds.push(mutation.id);
         continue;
       }
 
-      await applyMutation(sql, username, mutation);
+      // Acknowledgement and the record change must commit or fail together.
+      const recordQuery = applyMutation(sql, username, mutation);
+      const logQuery = sql`
+        insert into sync_mutation_log (mutation_id, owner_username, entity, action, record_id)
+        values (${mutation.id}, ${username}, ${mutation.entity}, ${mutation.action}, ${mutation.recordId})
+        on conflict (mutation_id) do nothing
+      `;
+      await sql.transaction([recordQuery, logQuery]);
       processedIds.push(mutation.id);
     }
 
@@ -252,3 +260,5 @@ export const handler = async function handler(event) {
     });
   }
 };
+
+export const handler = createSyncHandler();
