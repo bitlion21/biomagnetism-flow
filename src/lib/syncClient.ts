@@ -75,6 +75,7 @@ interface HybridBootstrapPayload {
   patients?: unknown[];
   appointments?: unknown[];
   sessions?: unknown[];
+  deleted?: { patients?: string[]; appointments?: string[]; sessions?: string[] };
   error?: string;
 }
 

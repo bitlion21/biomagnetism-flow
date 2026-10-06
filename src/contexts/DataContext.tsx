@@ -427,15 +427,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     if (Array.isArray(bootstrap.patients)) {
       const remote = bootstrap.patients.filter(isPatientRecord);
-      setPatients(local => ensureFixedPatient(mergeCloudRecords(local, remote, 'patients', getSyncQueue(currentUsername))));
+      setPatients(local => ensureFixedPatient(mergeCloudRecords(local, remote, 'patients', getSyncQueue(currentUsername), bootstrap.deleted?.patients)));
     }
     if (Array.isArray(bootstrap.appointments)) {
       const remote = bootstrap.appointments.filter(isAppointmentRecord);
-      setAppointments(local => ensureFixedAppointment(mergeCloudRecords(local, remote, 'appointments', getSyncQueue(currentUsername))));
+      setAppointments(local => ensureFixedAppointment(mergeCloudRecords(local, remote, 'appointments', getSyncQueue(currentUsername), bootstrap.deleted?.appointments)));
     }
     if (Array.isArray(bootstrap.sessions)) {
       const remote = bootstrap.sessions.filter(isSessionRecord);
-      setSessions(local => mergeCloudRecords(local, remote, 'sessions', getSyncQueue(currentUsername)));
+      setSessions(local => mergeCloudRecords(local, remote, 'sessions', getSyncQueue(currentUsername), bootstrap.deleted?.sessions));
     }
     return true;
   };

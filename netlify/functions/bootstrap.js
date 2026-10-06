@@ -36,12 +36,12 @@ export const handler = async function handler(event) {
     await ensureOwnershipColumns(sql);
 
     const [patientsRows, appointmentsRows, sessionsRows] = await Promise.all([
-      sql`select * from patients where owner_username = ${username} and deleted_at is null order by created_at asc`,
-      sql`select * from appointments where owner_username = ${username} and deleted_at is null order by date asc, time asc`,
-      sql`select * from sessions where owner_username = ${username} and deleted_at is null order by date desc, created_at desc`,
+      sql`select * from patients where owner_username = ${username} order by created_at asc`,
+      sql`select * from appointments where owner_username = ${username} order by date asc, time asc`,
+      sql`select * from sessions where owner_username = ${username} order by date desc, created_at desc`,
     ]);
 
-    const patients = patientsRows.map((row) =>
+    const patients = patientsRows.filter(row => !row.deleted_at).map((row) =>
       rowDataOrFallback(row, {
         id: row.id,
         phone: row.phone,
@@ -55,7 +55,7 @@ export const handler = async function handler(event) {
       })
     );
 
-    const appointments = appointmentsRows.map((row) =>
+    const appointments = appointmentsRows.filter(row => !row.deleted_at).map((row) =>
       rowDataOrFallback(row, {
         id: row.id,
         patientId: row.patient_id,
@@ -68,7 +68,7 @@ export const handler = async function handler(event) {
       })
     );
 
-    const sessions = sessionsRows.map((row) =>
+    const sessions = sessionsRows.filter(row => !row.deleted_at).map((row) =>
       rowDataOrFallback(row, {
         id: row.id,
         patientId: row.patient_id,
@@ -87,6 +87,11 @@ export const handler = async function handler(event) {
       patients,
       appointments,
       sessions,
+      deleted: {
+        patients: patientsRows.filter(row => row.deleted_at).map(row => row.id),
+        appointments: appointmentsRows.filter(row => row.deleted_at).map(row => row.id),
+        sessions: sessionsRows.filter(row => row.deleted_at).map(row => row.id),
+      },
     });
   } catch (error) {
     return json(500, {
