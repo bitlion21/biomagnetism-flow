@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Shield, UserCheck, UserX, UserRoundX, Clock3, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Shield, UserCheck, UserX, UserRoundX, Clock3, Trash2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +23,36 @@ const statusLabel: Record<UserStatus, string> = {
 };
 
 export function AdminUsersPage() {
-  const { accounts, approveAccount, disableAccount, rejectAccount, restoreAccount, deleteAccount } = useAuth();
+  const { user, accounts, refreshAccounts, approveAccount, disableAccount, rejectAccount, restoreAccount, deleteAccount } = useAuth();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const refreshRef = useRef(refreshAccounts);
+  refreshRef.current = refreshAccounts;
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    let active = true;
+    let refreshing = false;
+    const refresh = async () => {
+      if (!active || refreshing || !navigator.onLine || document.visibilityState !== 'visible') return;
+      refreshing = true;
+      try {
+        await refreshRef.current();
+      } finally {
+        refreshing = false;
+      }
+    };
+    const onVisible = () => { void refresh(); };
+    void refresh();
+    const interval = window.setInterval(onVisible, 15000);
+    window.addEventListener('online', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('online', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user?.id, user?.role]);
 
   const sortedAccounts = [...accounts].sort((a, b) => {
     if (a.status === 'pending' && b.status !== 'pending') return -1;
@@ -81,9 +109,13 @@ export function AdminUsersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Usuarios</h1>
-          <p className="text-muted-foreground">Aprobación local de acceso y gestión de estados.</p>
+          <p className="text-muted-foreground">Aprobación de acceso y gestión de estados.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => void refreshAccounts()}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Actualizar
+          </Button>
           <Badge variant="outline" className="border-warning/40 text-warning">
             {pendingCount} pendientes
           </Badge>

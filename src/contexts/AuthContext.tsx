@@ -205,10 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (result.error === 'AUTH_API_UNAVAILABLE') {
-      setMode('local');
-      loadLocalAccounts();
-    }
+    // Keep the last server list on failure; never replace it with browser-only accounts.
   };
 
   useEffect(() => {
@@ -377,13 +374,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
     register: async ({ username, password }) => {
-      if (mode === 'local') return registerLocal(username, password);
+      // Local requests are only for the local development preview.
+      if (mode === 'local' && shouldForceLocalAuth()) return registerLocal(username, password);
 
       const result = await registerRequest(username, password);
       if (result.error === 'AUTH_API_UNAVAILABLE') {
-        setMode('local');
-        loadLocalAccounts();
-        return registerLocal(username, password);
+        return { ok: false, error: 'No se pudo conectar con el servidor. La solicitud no se ha enviado; vuelve a intentarlo cuando tengas conexión.' };
       }
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     },

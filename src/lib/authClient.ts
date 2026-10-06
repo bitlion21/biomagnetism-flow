@@ -1,4 +1,4 @@
-import { AuthAccount, User, UserStatus } from '@/types';
+import type { AuthAccount, User, UserStatus } from '@/types';
 
 const AUTH_API_BASE = '/api';
 const TOKEN_STORAGE_KEY = 'biomag_auth_token';
